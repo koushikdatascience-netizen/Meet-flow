@@ -1,0 +1,35 @@
+name: Test shop workflows
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: meatflow_test
+          POSTGRES_USER: meatflow
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U meatflow -d meatflow_test" --health-interval=5s --health-timeout=5s --health-retries=12
+    env:
+      DJANGO_DEBUG: '1'
+      POSTGRES_DB: meatflow_test
+      POSTGRES_USER: meatflow
+      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_HOST: localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test shop/js_tests/product-search.test.cjs
+      - run: docker build -t meatflow-test .

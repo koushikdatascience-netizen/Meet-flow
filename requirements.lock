@@ -1,0 +1,4 @@
+# Compatibility entry point retained for older setup instructions.
+# Resolve available packages for the target Python using the supported ranges.
+# This file is not an exact-version lock; do not replace it with a local pip freeze.
+-r requirements.txt

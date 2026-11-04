@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+db.sqlite3
+media/
+staticfiles/
+.venv/
+backups/
+
+.preview/
+
+.ruff_cache/
+certs/
+*.pem
+*.key
+.env.*
+!.env.example
