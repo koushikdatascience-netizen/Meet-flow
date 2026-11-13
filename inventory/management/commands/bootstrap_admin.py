@@ -1,4 +1,4 @@
-"""Optional first administrator creation for hosts without an interactive shell."""
+"""Synchronize the platform administrator with owner-managed hosting credentials."""
 
 import os
 
@@ -9,7 +9,7 @@ from django.db import transaction
 
 
 class Command(BaseCommand):
-    help = "Create the first platform admin from private environment variables; never reset an account."
+    help = "Create or update the platform admin using the two private hosting environment variables."
 
     def handle(self, *args, **options):
         username = os.environ.get("MEATFLOW_BOOTSTRAP_USERNAME", "").strip()
@@ -17,11 +17,6 @@ class Command(BaseCommand):
         if not username and not password:
             return
         User = get_user_model()
-        if User.objects.filter(is_superuser=True).exists():
-            self.stdout.write(
-                "An administrator already exists. Bootstrap skipped; no accounts changed."
-            )
-            return
         if not username or not password:
             raise CommandError(
                 "Set both MEATFLOW_BOOTSTRAP_USERNAME and MEATFLOW_BOOTSTRAP_PASSWORD, or remove both."
@@ -31,17 +26,41 @@ class Command(BaseCommand):
             User._meta.get_field("username").clean(username, user)
             password_validation.validate_password(password, user)
             with transaction.atomic():
-                if User.objects.filter(username=username).exists():
+                target = (
+                    User.objects.select_for_update().filter(username=username).first()
+                )
+                if target and not target.is_superuser:
                     raise CommandError(
-                        "Bootstrap username is already in use. Existing accounts are never promoted or reset."
+                        "Username belongs to a regular user. No accounts changed."
                     )
-                User.objects.create_superuser(username=username, password=password)
+                if not target:
+                    admins = list(
+                        User.objects.select_for_update()
+                        .filter(is_superuser=True)
+                        .order_by("pk")[:2]
+                    )
+                    if len(admins) > 1:
+                        raise CommandError(
+                            "Multiple administrators exist. Set the username to the exact administrator to update."
+                        )
+                    target = admins[0] if admins else None
+                if target:
+                    target.username = username
+                    target.is_active = True
+                    target.is_staff = True
+                    if not target.check_password(password):
+                        target.set_password(password)
+                    target.save(
+                        update_fields=["username", "password", "is_active", "is_staff"]
+                    )
+                else:
+                    User.objects.create_superuser(username=username, password=password)
         except ValidationError:
             raise CommandError(
                 "Use a valid username and a strong, non-common password unrelated to the username."
             ) from None
         self.stdout.write(
             self.style.SUCCESS(
-                "First administrator created. Remove both MEATFLOW_BOOTSTRAP variables from the hosting environment."
+                "Administrator login synchronized with MEATFLOW_BOOTSTRAP_USERNAME and MEATFLOW_BOOTSTRAP_PASSWORD."
             )
         )

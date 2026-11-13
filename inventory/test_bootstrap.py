@@ -35,13 +35,35 @@ class BootstrapTests(TestCase):
         self.assertTrue(self.client.login(username=user.username, password=password))
         self.assertRedirects(self.client.get("/"), "/companies/")
 
-    def test_redeploy_does_not_reset_password_or_create_another_admin(self):
+    def test_existing_admin_uses_current_environment_credentials(self):
         self.run_bootstrap("platform-owner", "First-test-password-876!")
+        original_pk = get_user_model().objects.get().pk
         self.run_bootstrap("another-owner", "Different-test-password-987!")
         self.assertEqual(get_user_model().objects.count(), 1)
+        self.assertEqual(get_user_model().objects.get().pk, original_pk)
+        self.assertEqual(get_user_model().objects.get().username, "another-owner")
         self.assertTrue(
-            get_user_model().objects.get().check_password("First-test-password-876!")
+            get_user_model()
+            .objects.get()
+            .check_password("Different-test-password-987!")
         )
+
+    def test_unchanged_environment_does_not_invalidate_sessions(self):
+        self.run_bootstrap("owner", "Different-test-password-987!")
+        hashed = get_user_model().objects.get().password
+        self.run_bootstrap("owner", "Different-test-password-987!")
+        self.assertEqual(get_user_model().objects.get().password, hashed)
+
+    def test_ambiguous_admin_is_not_changed(self):
+        get_user_model().objects.create_superuser(
+            "one", password="Original-password-987!"
+        )
+        get_user_model().objects.create_superuser(
+            "two", password="Original-password-987!"
+        )
+        with self.assertRaises(CommandError):
+            self.run_bootstrap("third", "Different-test-password-987!")
+        self.assertEqual(get_user_model().objects.count(), 2)
 
     def test_does_not_promote_existing_username(self):
         user = get_user_model().objects.create_user(
