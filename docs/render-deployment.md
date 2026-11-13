@@ -19,6 +19,10 @@ Do not deploy business records using SQLite inside the ephemeral container. Star
 
 The local database is not part of Git or the Docker image. A fresh Render database needs its own administrator. In the Render Shell, run `python manage.py createsuperuser` once, then log in at `/login/` and create a company and its admin. Account passwords are not embedded in the code. Existing deployed records are upgraded in the connected database; if legacy products exist, an active superuser must exist before the import migration. Back up before upgrading a database containing existing business records.
 
+### First administrator without Render Shell
+
+For a fresh database, set `MEATFLOW_BOOTSTRAP_USERNAME` and `MEATFLOW_BOOTSTRAP_PASSWORD` as private environment variables on the existing Render service. Choose a unique username and a strong password. Save and deploy the latest commit with Docker Command blank. After migrations, startup creates the first superuser with a hashed password. No default password is supplied, and neither value is printed in logs. Log in at `/login/` using your chosen credentials, then remove both bootstrap variables and save again. Existing superusers cause bootstrap to skip; existing regular accounts are never promoted or reset. Do not commit these values or share them in chat. This is only initial setup, not password recovery.
+
 The startup migration is appropriate for this single-service setup. For multiple instances, move migrations to one paid pre-deploy command and remove the startup migration from that environment's startup command so deployments do not run migrations concurrently.
 
 Check `/login/`, `/static/inventory/workspace.css`, and `/healthz/` after deployment. Verify company login, a test stock entry and a CSV report in a test company before using live stock. Docker engine testing is also covered in the GitHub Actions workflow.
