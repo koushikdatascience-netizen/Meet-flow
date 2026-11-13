@@ -12,7 +12,9 @@ from .models import Company, Entry, Item, Membership, post_entry, reverse_entry
 
 class StockTests(TestCase):
     def setUp(self):
-        self.company = Company.objects.create(name="A")
+        self.company = Company.objects.get(is_primary=True)
+        self.company.name = "A"
+        self.company.save(update_fields=["name"])
         self.other = Company.objects.create(name="B")
         self.user = get_user_model().objects.create_user(
             "owner", password="test-password"
@@ -230,9 +232,11 @@ class StockTests(TestCase):
         self.assertNotContains(self.client.get(f"/document/{entry.pk}/"), "price")
         self.member.company = self.other
         self.member.save()
-        self.assertEqual(self.client.get(f"/document/{entry.pk}/").status_code, 404)
-        self.other.active = False
-        self.other.save()
+        self.assertEqual(self.client.get(f"/document/{entry.pk}/").status_code, 403)
+        self.member.company = self.company
+        self.member.save()
+        self.company.active = False
+        self.company.save(update_fields=["active"])
         self.assertEqual(self.client.get("/reports/").status_code, 403)
 
     def test_legacy_stock_import_preserves_quantities_without_prices(self):
@@ -261,3 +265,51 @@ class StockTests(TestCase):
         self.assertEqual(owner.membership.company_id, imported.company_id)
         legacy.refresh_from_db()
         self.assertEqual(legacy.sale_price, 200)
+
+    def test_owner_opens_home_directly_and_company_creation_is_removed(self):
+        owner = get_user_model().objects.create_superuser(
+            "new-owner", password="Strong-private-password-281!"
+        )
+        self.client.force_login(owner)
+        response = self.client.get("/")
+        self.assertContains(response, "Stock operations")
+        self.assertNotContains(response, "Companies")
+        self.assertEqual(owner.membership.company_id, self.company.pk)
+        self.assertEqual(self.client.get("/companies/").status_code, 404)
+        self.assertEqual(
+            self.client.post("/companies/", {"name": "Another shop"}).status_code, 404
+        )
+        self.assertEqual(self.client.get("/users/").status_code, 200)
+
+    def test_single_workspace_migration_keeps_records_and_assigns_existing_staff(self):
+        import importlib
+        from django.apps import apps
+
+        owner = get_user_model().objects.create_superuser(
+            "workspace-owner", password="Strong-private-password-281!"
+        )
+        Membership.objects.create(
+            user=owner, company=self.company, role="admin", must_change_password=False
+        )
+        colleague = get_user_model().objects.create_user(
+            "colleague", password="Strong-private-password-492!"
+        )
+        membership = Membership.objects.create(
+            user=colleague,
+            company=self.other,
+            role="operator",
+            must_change_password=False,
+        )
+        entry = self.post("purchase", "6")
+        self.company.is_primary = False
+        self.company.save(update_fields=["is_primary"])
+        migration = importlib.import_module(
+            "inventory.migrations.0006_single_internal_workspace"
+        )
+        migration.configure_workspace(apps, None)
+        membership.refresh_from_db()
+        self.assertEqual(membership.company_id, self.company.pk)
+        self.assertEqual(Entry.objects.get(pk=entry.pk).lines.get().quantity, 6)
+        self.assertTrue(Item.objects.filter(pk=self.foreign.pk).exists())
+        self.client.force_login(colleague)
+        self.assertEqual(self.client.get("/reports/").context["rows"][0][-1], 6)

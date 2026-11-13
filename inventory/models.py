@@ -15,6 +15,16 @@ class AdminPasswordReset(models.Model):
 class Company(models.Model):
     name = models.CharField(max_length=160)
     active = models.BooleanField(default=True)
+    is_primary = models.BooleanField(default=False, editable=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_primary"],
+                condition=models.Q(is_primary=True),
+                name="inventory_single_primary_workspace",
+            )
+        ]
 
     def __str__(self):
         return self.name

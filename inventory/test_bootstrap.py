@@ -33,7 +33,8 @@ class BootstrapTests(TestCase):
         self.assertTrue(user.check_password(password))
         self.assertNotIn(password, output)
         self.assertTrue(self.client.login(username=user.username, password=password))
-        self.assertRedirects(self.client.get("/"), "/companies/")
+        self.assertContains(self.client.get("/"), "Stock operations")
+        self.assertNotContains(self.client.get("/"), 'href="/companies/"')
 
     def test_existing_admin_uses_current_environment_credentials(self):
         self.run_bootstrap("platform-owner", "First-test-password-876!")

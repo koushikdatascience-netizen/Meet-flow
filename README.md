@@ -1,6 +1,6 @@
 # MeatFlow Stock
 
-Stock-only, multi-company inventory management. Prices, buying costs, taxes and payment fields are absent from the active application. Printable stock documents show amounts and totals as `00`.
+Stock-only inventory management for one company and its internal staff. There is no SaaS signup, company creation or company switching. Prices, buying costs, taxes and payment fields are absent from the active application. Printable stock documents show amounts and totals as `00`.
 
 ## Upgrade an existing installation
 
@@ -19,18 +19,17 @@ Existing other users have no company access until an admin creates or assigns th
 
 ## New installation
 
-Use Python 3.11 or newer, create a virtual environment, install `requirements.txt`, then run `migrate` and `createsuperuser`. Sign in at `/login/`. A platform superuser without a company sees `/companies/`, where they create companies and an initial admin account. An upgraded superuser can also open `/companies/` from the navigation.
+Use Python 3.11 or newer, create a virtual environment, install `requirements.txt`, then run `migrate` and `createsuperuser`. Sign in at `/login/`. Administrators open Home directly and manage staff under Users. The internal workspace is created automatically by migrations. On Render, the existing `MEATFLOW_BOOTSTRAP_USERNAME` and `MEATFLOW_BOOTSTRAP_PASSWORD` environment variables control the administrator login; see `docs/render-deployment.md`.
 
 ## Users and permissions
 
-* Platform superusers create, rename and deactivate companies.
-* Company admins manage their own items, users, stock entries and reports.
+* Administrators manage items, staff users, stock entries and reports for the single internal workspace.
 * Stock operators receive selected opening, purchase, sale, deletion and report features.
 * Report viewers receive report/export access only.
 
-Company admins create globally unique usernames and strong temporary passwords. Passwords are hashed using Django's password hashing; passwords are never displayed after saving. A new or reset user must change their temporary password before company access. Editing a user without entering a password retains their current password. Uncheck Active to disable an account. Users cannot disable or demote themselves. An ordinary company admin cannot edit a platform superuser. Never share the platform superuser login with staff.
+Admins create unique usernames and strong temporary passwords. Passwords are hashed using Django's password hashing; passwords are never displayed after saving. A new or reset user must change their temporary password before workspace access. Editing a user without entering a password retains their current password. Uncheck Active to disable an account. Users cannot disable or demote themselves. Ordinary staff admins cannot edit the environment-managed superuser. Never share the owner login with staff.
 
-Every request scopes items, entries, users, receipts and reports to the authenticated membership. Company ID is never accepted from stock/user forms. Inactive companies cannot access inventory. The old `/admin/` and financial document routes are closed.
+Every request checks the user’s role and feature access in the single internal workspace. No company selection is accepted from forms. Historical company references remain internal database details to preserve records; the company-management route is removed. The old `/admin/` and financial document routes are closed.
 
 ## Stock workflow
 
@@ -56,3 +55,7 @@ Run MeatFlow locally and, in another terminal, `cloudflared tunnel --url http://
 ## Deployment and backups
 
 Existing Docker/PostgreSQL and backup commands are preserved. Use PostgreSQL for concurrent production stock operations (company row locks serialize posting/reversal); SQLite is for local use and does not supply PostgreSQL-style row locks. Configure HTTPS, DEBUG=0, a strong secret, exact hosts, trusted origins and durable backups before production. Uploaded legacy media and the database are included by `backup_shop`; test recovery with `verify_backup` and `restore_backup`. See `docs/legacy-billing.md` for the former system's infrastructure reference; its billing instructions do not apply to the active stock-only UI.
+
+## Single-company upgrade
+
+Migration 0006 selects the existing owner workspace, or the workspace with the most stock activity when the owner has none, and assigns existing staff to that one workspace. No item, entry, user or audit history is deleted. Any extra companies created during earlier testing remain archived in the database; their stock is not silently merged. All normal users work in the same selected workspace. Back up before migration.

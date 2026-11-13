@@ -16,21 +16,18 @@ from django.utils import timezone
 
 from .forms import ItemForm, UserForm
 from .models import Company, Entry, Item, Line, Membership, post_entry, reverse_entry
+from .workspace import member_for
 
 
-def tenant(role=None):
+def staff_access(role=None):
     def decorate(view):
         @login_required
         @wraps(view)
         def wrapper(request, *args, **kwargs):
-            member = (
-                Membership.objects.select_related("company")
-                .filter(user=request.user)
-                .first()
-            )
+            member = member_for(request.user)
             if not member or not member.company.active:
                 raise PermissionDenied(
-                    "No active company assigned. Contact your administrator."
+                    "No active staff access. Contact your administrator."
                 )
             request.member = member
             if member.must_change_password:
@@ -52,7 +49,6 @@ def page(request, template, **context):
             "users": "Users",
             "items": "Items",
             "entries": context.get("title", "Stock entries"),
-            "companies": "Companies",
             "home": "Home",
             "delete": "Delete entry",
             "receipt": "Stock document",
@@ -63,15 +59,11 @@ def page(request, template, **context):
 
 @login_required
 def home(request):
-    member = (
-        Membership.objects.select_related("company").filter(user=request.user).first()
-    )
-    if request.user.is_superuser and not member:
-        return redirect("companies")
+    member = member_for(request.user)
     if member:
         if not member.company.active:
             raise PermissionDenied(
-                "Your company is inactive. Contact your administrator."
+                "The workspace is inactive. Contact your administrator."
             )
         request.member = member
         if member.must_change_password:
@@ -85,57 +77,10 @@ def home(request):
                 company=member.company, kind__in=member.allowed_features
             ).select_related("created_by")[:6],
         )
-    raise PermissionDenied("No features assigned. Contact your company administrator.")
+    raise PermissionDenied("No features assigned. Contact your administrator.")
 
 
-@login_required
-def companies(request):
-    if not request.user.is_superuser:
-        raise PermissionDenied
-    if request.method == "POST":
-        name = request.POST.get("name", "").strip()[:160]
-        if request.POST.get("company_id"):
-            company = get_object_or_404(Company, pk=request.POST["company_id"])
-            if name:
-                company.name = name
-                company.active = request.POST.get("active") == "on"
-                company.save(update_fields=["name", "active"])
-                messages.success(request, "Company settings updated.")
-            return redirect("companies")
-        username = request.POST.get("username", "").strip()
-        password = request.POST.get("password", "")
-        form = UserForm(
-            {
-                "username": username,
-                "temporary_password": password,
-                "role": "admin",
-                "active": True,
-            }
-        )
-        if not name or not password or not form.is_valid():
-            messages.error(
-                request,
-                str(form.errors)
-                if form.errors
-                else "Enter company, username and temporary password.",
-            )
-        else:
-            try:
-                with transaction.atomic():
-                    company = Company.objects.create(name=name)
-                    user = get_user_model().objects.create_user(
-                        username=username, password=password
-                    )
-                    Membership.objects.create(company=company, user=user, role="admin")
-                messages.success(request, "Company and administrator created.")
-            except IntegrityError:
-                messages.error(
-                    request, "Username already exists. Choose another username."
-                )
-    return page(request, "companies", companies=Company.objects.all())
-
-
-@tenant(["admin"])
+@staff_access(["admin"])
 def items(request):
     item = (
         get_object_or_404(Item, pk=request.GET["edit"], company=request.member.company)
@@ -170,7 +115,7 @@ def items(request):
     )
 
 
-@tenant(["admin"])
+@staff_access(["admin"])
 def remove_item(request, pk):
     item = get_object_or_404(Item, pk=pk, company=request.member.company)
     if request.method == "POST":
@@ -186,7 +131,7 @@ def remove_item(request, pk):
     return page(request, "remove_item", item=item)
 
 
-@tenant(["admin", "operator"])
+@staff_access(["admin", "operator"])
 def entries(request, kind):
     if kind not in dict(Entry.KINDS):
         raise PermissionDenied
@@ -271,7 +216,7 @@ def entries(request, kind):
     )
 
 
-@tenant(["admin", "operator"])
+@staff_access(["admin", "operator"])
 def delete_entry(request, pk):
     if "delete" not in request.member.allowed_features:
         raise PermissionDenied
@@ -290,7 +235,7 @@ def delete_entry(request, pk):
     return page(request, "delete", entry=entry)
 
 
-@tenant(["admin", "operator"])
+@staff_access(["admin", "operator"])
 def receipt(request, pk):
     entry = get_object_or_404(
         Entry.objects.prefetch_related("lines__item"),
@@ -302,7 +247,7 @@ def receipt(request, pk):
     return page(request, "receipt", entry=entry)
 
 
-@tenant(["admin"])
+@staff_access(["admin"])
 def users(request):
     member = (
         get_object_or_404(
@@ -371,7 +316,7 @@ def users(request):
     )
 
 
-@tenant()
+@staff_access()
 def report(request):
     if "reports" not in request.member.allowed_features:
         raise PermissionDenied
