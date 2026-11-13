@@ -24,7 +24,7 @@ Use Python 3.11 or newer, create a virtual environment, install `requirements.tx
 ## Users and permissions
 
 * Administrators manage items, staff users, stock entries and reports for the single internal workspace.
-* Stock operators receive selected opening, purchase, sale, deletion and report features.
+* Hotel staff roles: Manager, Worker, Support, Cook and Server / serving staff. Selecting a role in Users suggests permissions; admins can customize every feature before saving. Managers default to stock operations and reports, workers to purchase/sale entries, support to reports, and cooks/servers to stock-out entries. Only Administrators manage users and item setup. Existing Stock operator and Report viewer accounts remain supported.
 * Report viewers receive report/export access only.
 
 Admins create unique usernames and strong temporary passwords. Passwords are hashed using Django's password hashing; passwords are never displayed after saving. A new or reset user must change their temporary password before workspace access. Editing a user without entering a password retains their current password. Uncheck Active to disable an account. Users cannot disable or demote themselves. Ordinary staff admins cannot edit the environment-managed superuser. Never share the owner login with staff.

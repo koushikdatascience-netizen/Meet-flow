@@ -26,7 +26,7 @@ class UserForm(forms.Form):
             ("reports", "Reports and sheet export"),
         ],
         widget=forms.CheckboxSelectMultiple,
-        help_text="Choose feature access for operators and viewers. Company admins always have all features.",
+        help_text="Choose exactly what this staff member can do. Administrators always have full access. Other roles cannot manage users or item setup.",
     )
 
     def clean_username(self):

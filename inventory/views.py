@@ -131,7 +131,7 @@ def remove_item(request, pk):
     return page(request, "remove_item", item=item)
 
 
-@staff_access(["admin", "operator"])
+@staff_access(["admin", "manager", "worker", "support", "cook", "server", "operator"])
 def entries(request, kind):
     if kind not in dict(Entry.KINDS):
         raise PermissionDenied
@@ -216,7 +216,7 @@ def entries(request, kind):
     )
 
 
-@staff_access(["admin", "operator"])
+@staff_access(["admin", "manager", "worker", "support", "cook", "server", "operator"])
 def delete_entry(request, pk):
     if "delete" not in request.member.allowed_features:
         raise PermissionDenied
@@ -235,7 +235,7 @@ def delete_entry(request, pk):
     return page(request, "delete", entry=entry)
 
 
-@staff_access(["admin", "operator"])
+@staff_access(["admin", "manager", "worker", "support", "cook", "server", "operator"])
 def receipt(request, pk):
     entry = get_object_or_404(
         Entry.objects.prefetch_related("lines__item"),

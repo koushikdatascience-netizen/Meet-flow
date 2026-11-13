@@ -32,7 +32,12 @@ class Company(models.Model):
 
 class Membership(models.Model):
     ROLES = [
-        ("admin", "Company admin"),
+        ("admin", "Administrator"),
+        ("manager", "Manager"),
+        ("worker", "Worker"),
+        ("support", "Support"),
+        ("cook", "Cook"),
+        ("server", "Server / serving staff"),
         ("operator", "Stock operator"),
         ("viewer", "Report viewer"),
     ]
@@ -48,11 +53,19 @@ class Membership(models.Model):
             return ["opening", "purchase", "sale", "delete", "reports"]
         if self.features is not None:
             return self.features
-        return (
-            ["opening", "purchase", "sale", "delete", "reports"]
-            if self.role == "operator"
-            else ["reports"]
-        )
+        return self.default_features(self.role)
+
+    @staticmethod
+    def default_features(role):
+        return {
+            "manager": ["opening", "purchase", "sale", "delete", "reports"],
+            "worker": ["purchase", "sale"],
+            "support": ["reports"],
+            "cook": ["sale"],
+            "server": ["sale"],
+            "operator": ["opening", "purchase", "sale", "delete", "reports"],
+            "viewer": ["reports"],
+        }.get(role, [])
 
 
 class Item(models.Model):
