@@ -331,9 +331,10 @@ def report(request):
         messages.error(request, "Choose a valid date range of at most 367 days.")
     category = request.GET.get("category", "")
     items = Item.objects.filter(company=request.member.company)
-    categories = list(
-        items.order_by("category").values_list("category", flat=True).distinct()
-    )
+    categories = list(Item.Category.values)
+    if category and category not in categories:
+        category = ""
+        messages.error(request, "Choose Chicken, Mutton, Fish or Others.")
     if category:
         items = items.filter(category=category)
     item_list = list(items)

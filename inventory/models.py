@@ -56,9 +56,17 @@ class Membership(models.Model):
 
 
 class Item(models.Model):
+    class Category(models.TextChoices):
+        CHICKEN = "Chicken", "Chicken"
+        MUTTON = "Mutton", "Mutton"
+        FISH = "Fish", "Fish"
+        OTHERS = "Others", "Others"
+
     company = models.ForeignKey(Company, on_delete=models.PROTECT)
     name = models.CharField(max_length=160)
-    category = models.CharField(max_length=80, blank=True)
+    category = models.CharField(
+        max_length=80, choices=Category.choices, default=Category.OTHERS
+    )
     unit = models.CharField(
         max_length=2, choices=[("kg", "Kilogram"), ("pc", "Piece")], default="kg"
     )
@@ -66,9 +74,15 @@ class Item(models.Model):
 
     class Meta:
         constraints = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    category__in=["Chicken", "Mutton", "Fish", "Others"]
+                ),
+                name="inventory_item_category_allowed",
+            ),
             models.UniqueConstraint(
                 fields=["company", "name"], name="inventory_company_item_name"
-            )
+            ),
         ]
         ordering = ["name"]
 

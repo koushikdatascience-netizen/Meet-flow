@@ -26,7 +26,7 @@ class StockTests(TestCase):
             must_change_password=False,
         )
         self.item = Item.objects.create(
-            company=self.company, name="Chicken", category="Meat"
+            company=self.company, name="Chicken", category="Chicken"
         )
         self.foreign = Item.objects.create(company=self.other, name="Chicken")
         self.client.force_login(self.user)
@@ -149,10 +149,39 @@ class StockTests(TestCase):
         self.assertTrue(user.membership.must_change_password)
 
     def test_category_filter_and_csv_formula_escape(self):
-        Item.objects.create(company=self.company, name="=1+1", category="Other")
-        response = self.client.get("/reports/?category=Other&format=csv")
+        Item.objects.create(company=self.company, name="=1+1", category="Others")
+        response = self.client.get("/reports/?category=Others&format=csv")
         self.assertIn("'=1+1", response.content.decode("utf-8-sig"))
         self.assertNotIn("Chicken", response.content.decode())
+
+    def test_item_category_is_required_dropdown_with_four_choices(self):
+        from django import forms
+        from .forms import ItemForm
+
+        form = ItemForm()
+        self.assertIsInstance(form.fields["category"].widget, forms.Select)
+        self.assertEqual(
+            [value for value, label in form.fields["category"].choices if value],
+            ["Chicken", "Mutton", "Fish", "Others"],
+        )
+        for category in ["Meat", "Beef", "", "chicken"]:
+            invalid = ItemForm(
+                data={
+                    "name": "New item",
+                    "category": category,
+                    "unit": "kg",
+                    "active": "on",
+                }
+            )
+            self.assertFalse(invalid.is_valid())
+            self.assertIn("category", invalid.errors)
+        data = {"name": "New item", "category": "Fish", "unit": "kg", "active": "on"}
+        self.assertEqual(self.client.post("/items/", data).status_code, 302)
+        self.assertEqual(Item.objects.get(name="New item").category, "Fish")
+        self.assertEqual(
+            self.client.get("/reports/").context["categories"],
+            ["Chicken", "Mutton", "Fish", "Others"],
+        )
 
     def test_http_entry_submission_and_retry(self):
         response = self.client.get("/entries/purchase/")
@@ -251,6 +280,7 @@ class StockTests(TestCase):
         )
         legacy = Product.objects.create(
             name="Legacy fish",
+            category="Fish",
             stock=Decimal("12.750"),
             sale_price=200,
             average_cost=100,
