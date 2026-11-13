@@ -6,6 +6,12 @@ from django.db import models, transaction
 from django.utils import timezone
 
 
+class AdminPasswordReset(models.Model):
+    request_id = models.UUIDField(unique=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class Company(models.Model):
     name = models.CharField(max_length=160)
     active = models.BooleanField(default=True)
