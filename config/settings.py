@@ -1,11 +1,21 @@
 import os
 from pathlib import Path
 
+import dj_database_url
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 from django.core.exceptions import ImproperlyConfigured
 
 DEBUG = (
-    os.environ.get("DJANGO_DEBUG", "0" if os.environ.get("POSTGRES_DB") else "1") == "1"
+    os.environ.get(
+        "DJANGO_DEBUG",
+        "0"
+        if os.environ.get("POSTGRES_DB")
+        or os.environ.get("RENDER")
+        or os.environ.get("DATABASE_URL")
+        else "1",
+    )
+    == "1"
 )
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY", "dev-only-change-before-deploy" if DEBUG else ""
@@ -19,9 +29,14 @@ if not DEBUG and (
         "Set DJANGO_SECRET_KEY to a random value of at least 50 characters when DEBUG=0."
     )
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+RENDER_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if RENDER_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_HOSTNAME)
 CSRF_TRUSTED_ORIGINS = [
     x for x in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if x
 ]
+if RENDER_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append("https://" + RENDER_HOSTNAME)
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -30,13 +45,16 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "shop",
+    "inventory",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "inventory.middleware.LegacyAdminGuard",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -52,12 +70,19 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "inventory.context.navigation",
             ]
         },
     }
 ]
 WSGI_APPLICATION = "config.wsgi.application"
-if os.environ.get("POSTGRES_DB"):
+if os.environ.get("DATABASE_URL"):
+    DATABASES = {
+        "default": dj_database_url.parse(
+            os.environ["DATABASE_URL"], conn_max_age=60, conn_health_checks=True
+        )
+    }
+elif os.environ.get("POSTGRES_DB"):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -72,9 +97,18 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            "NAME": os.environ.get("SQLITE_PATH", BASE_DIR / "db.sqlite3"),
         }
     }
+if (
+    os.environ.get("RENDER")
+    and not os.environ.get("DATABASE_URL")
+    and not os.environ.get("POSTGRES_DB")
+    and not os.environ.get("SQLITE_PATH")
+):
+    raise ImproperlyConfigured(
+        "Render requires DATABASE_URL for PostgreSQL, or SQLITE_PATH pointing to an attached persistent disk. Ephemeral SQLite is disabled."
+    )
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
@@ -89,15 +123,27 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    },
+}
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+LOGIN_URL = "/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/login/"
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # Enable only when a trusted reverse proxy overwrites this header.
-if os.environ.get("DJANGO_TRUST_PROXY", "0") == "1":
+if (
+    os.environ.get("DJANGO_TRUST_PROXY", "1" if os.environ.get("RENDER") else "0")
+    == "1"
+):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SSL_REDIRECT", "0") == "1"
 

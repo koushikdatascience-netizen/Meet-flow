@@ -1,0 +1,263 @@
+import uuid
+from datetime import timedelta
+from decimal import Decimal
+
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.test import TestCase
+from django.utils import timezone
+
+from .models import Company, Entry, Item, Membership, post_entry, reverse_entry
+
+
+class StockTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(name="A")
+        self.other = Company.objects.create(name="B")
+        self.user = get_user_model().objects.create_user(
+            "owner", password="test-password"
+        )
+        self.member = Membership.objects.create(
+            user=self.user,
+            company=self.company,
+            role="admin",
+            must_change_password=False,
+        )
+        self.item = Item.objects.create(
+            company=self.company, name="Chicken", category="Meat"
+        )
+        self.foreign = Item.objects.create(company=self.other, name="Chicken")
+        self.client.force_login(self.user)
+        self.today = timezone.localdate()
+
+    def post(self, kind, qty, day=None, item=None, token=None):
+        return post_entry(
+            self.company,
+            self.user,
+            kind,
+            day or self.today,
+            "",
+            token or uuid.uuid4(),
+            [(item or self.item).pk and ((item or self.item).pk, Decimal(qty))],
+        )
+
+    def test_daily_stock_sheet_and_csv(self):
+        self.post("opening", "10", self.today - timedelta(days=1))
+        self.post("purchase", "5")
+        self.post("sale", "3")
+        response = self.client.get("/reports/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["rows"][0][4:], [10, 0, 5, 3, 12])
+        csv = self.client.get("/reports/?format=csv").content.decode("utf-8-sig")
+        self.assertIn("Opening stock", csv)
+        self.assertIn("Chicken", csv)
+        self.assertNotIn("Amount", csv)
+
+    def test_cross_tenant_items_and_entry_ids_are_rejected(self):
+        with self.assertRaises(Item.DoesNotExist):
+            self.post("purchase", "1", item=self.foreign)
+        foreign_entry = Entry.objects.create(
+            company=self.other,
+            kind="opening",
+            created_by=self.user,
+            token=uuid.uuid4(),
+            date=self.today,
+        )
+        self.assertEqual(
+            self.client.get(f"/entries/{foreign_entry.pk}/delete/").status_code, 404
+        )
+        self.assertEqual(
+            self.client.get(f"/items/?edit={self.foreign.pk}").status_code, 404
+        )
+
+    def test_negative_stock_and_backdated_changes_roll_back(self):
+        with self.assertRaises(ValidationError):
+            self.post("sale", "1")
+        self.assertEqual(Entry.objects.filter(company=self.company).count(), 0)
+        opening = self.post("opening", "10", self.today - timedelta(days=2))
+        self.post("sale", "8", self.today - timedelta(days=1))
+        self.post("purchase", "10")
+        with self.assertRaises(ValidationError):
+            reverse_entry(self.company, self.user, opening.pk, "wrong entry")
+        opening.refresh_from_db()
+        self.assertIsNone(opening.reversed_at)
+
+    def test_delete_sale_restores_stock_and_keeps_audit(self):
+        self.post("opening", "10")
+        sale = self.post("sale", "3")
+        reverse_entry(self.company, self.user, sale.pk, "Duplicate")
+        sale.refresh_from_db()
+        self.assertEqual(sale.reversed_by, self.user)
+        self.assertEqual(sale.reversal_reason, "Duplicate")
+        self.assertEqual(self.client.get("/reports/").context["rows"][0][-1], 10)
+
+    def test_opening_must_be_first_and_piece_quantity_whole(self):
+        self.post("purchase", "2")
+        with self.assertRaises(ValidationError):
+            self.post("opening", "1")
+        self.item.unit = "pc"
+        self.item.save()
+        with self.assertRaises(ValidationError):
+            self.post("purchase", "0.5")
+
+    def test_token_is_idempotent(self):
+        token = uuid.uuid4()
+        first = self.post("purchase", "2", token=token)
+        second = self.post("purchase", "2", token=token)
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(first.lines.count(), 1)
+
+    def test_viewer_cannot_write_or_manage_users(self):
+        self.member.role = "viewer"
+        self.member.save()
+        for path in [
+            "/items/",
+            "/users/",
+            "/entries/purchase/",
+            "/entries/sale/",
+            "/entries/opening/",
+        ]:
+            self.assertEqual(self.client.get(path).status_code, 403)
+        self.assertEqual(self.client.get("/reports/").status_code, 200)
+
+    def test_password_change_required_and_legacy_routes_closed(self):
+        self.member.must_change_password = True
+        self.member.save()
+        self.assertRedirects(self.client.get("/reports/"), "/password/")
+        self.assertEqual(self.client.get("/admin/").status_code, 403)
+        self.assertEqual(self.client.get("/invoice/1/").status_code, 404)
+
+    def test_user_creation_cannot_escape_company_or_escalate(self):
+        response = self.client.post(
+            "/users/",
+            {
+                "username": "new-user",
+                "temporary_password": "Long-random-password-948!",
+                "role": "viewer",
+                "active": "on",
+                "company": self.other.pk,
+                "is_superuser": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        user = get_user_model().objects.get(username="new-user")
+        self.assertFalse(user.is_superuser)
+        self.assertFalse(user.is_staff)
+        self.assertEqual(user.membership.company, self.company)
+        self.assertTrue(user.membership.must_change_password)
+
+    def test_category_filter_and_csv_formula_escape(self):
+        Item.objects.create(company=self.company, name="=1+1", category="Other")
+        response = self.client.get("/reports/?category=Other&format=csv")
+        self.assertIn("'=1+1", response.content.decode("utf-8-sig"))
+        self.assertNotIn("Chicken", response.content.decode())
+
+    def test_http_entry_submission_and_retry(self):
+        response = self.client.get("/entries/purchase/")
+        data = {
+            "token": response.context["token"],
+            "date": str(self.today),
+            "item": [str(self.item.pk)],
+            "quantity": ["4"],
+            "note": "",
+        }
+        self.assertEqual(self.client.post("/entries/purchase/", data).status_code, 302)
+        self.assertEqual(self.client.post("/entries/purchase/", data).status_code, 302)
+        self.assertEqual(Entry.objects.filter(company=self.company).count(), 1)
+
+    def test_feature_permissions_are_enforced_on_post(self):
+        self.member.role = "operator"
+        self.member.features = ["purchase"]
+        self.member.save()
+        self.assertEqual(self.client.get("/entries/purchase/").status_code, 200)
+        self.assertEqual(self.client.post("/entries/sale/", {}).status_code, 403)
+        self.assertEqual(self.client.get("/reports/?format=csv").status_code, 403)
+        home = self.client.get("/")
+        self.assertContains(home, "Add or manage purchases")
+        self.assertNotContains(home, "Add or manage sales")
+        self.assertNotContains(home, 'href="/reports/"')
+
+    def test_home_and_sidebar_follow_role_and_item_removal_preserves_history(self):
+        self.assertContains(self.client.get("/"), 'aria-label="Main navigation"')
+        self.assertContains(self.client.get("/"), "Add, edit or remove items")
+        entry = self.post("purchase", "4")
+        self.assertEqual(
+            self.client.post(f"/items/{self.item.pk}/remove/").status_code, 302
+        )
+        self.item.refresh_from_db()
+        self.assertFalse(self.item.active)
+        self.assertEqual(entry.lines.get().quantity, 4)
+        self.assertEqual(self.client.get("/reports/").context["rows"][0][-1], 4)
+        self.member.role = "viewer"
+        self.member.save()
+        home = self.client.get("/")
+        self.assertContains(home, "Open stock sheet")
+        self.assertNotContains(home, "Add or manage purchases")
+        self.assertNotContains(home, 'href="/users/"')
+        self.assertEqual(
+            self.client.post(f"/items/{self.item.pk}/remove/").status_code, 403
+        )
+
+    def test_password_change_unlocks_account(self):
+        self.member.must_change_password = True
+        self.member.save()
+        response = self.client.post(
+            "/password/",
+            {
+                "old_password": "test-password",
+                "new_password1": "Different-good-password-824!",
+                "new_password2": "Different-good-password-824!",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.must_change_password)
+
+    def test_admin_cannot_edit_platform_owner(self):
+        owner = get_user_model().objects.create_superuser(
+            "platform", password="platform-password"
+        )
+        membership = Membership.objects.create(
+            user=owner, company=self.company, role="admin"
+        )
+        self.assertEqual(
+            self.client.get(f"/users/?edit={membership.pk}").status_code, 403
+        )
+
+    def test_inactive_company_and_receipt_isolation(self):
+        entry = self.post("purchase", "1")
+        self.assertContains(self.client.get(f"/document/{entry.pk}/"), "00")
+        self.assertNotContains(self.client.get(f"/document/{entry.pk}/"), "price")
+        self.member.company = self.other
+        self.member.save()
+        self.assertEqual(self.client.get(f"/document/{entry.pk}/").status_code, 404)
+        self.other.active = False
+        self.other.save()
+        self.assertEqual(self.client.get("/reports/").status_code, 403)
+
+    def test_legacy_stock_import_preserves_quantities_without_prices(self):
+        import importlib
+
+        from django.apps import apps
+
+        from shop.models import Product
+
+        owner = get_user_model().objects.create_superuser(
+            "import-owner", password="owner-password"
+        )
+        legacy = Product.objects.create(
+            name="Legacy fish",
+            stock=Decimal("12.750"),
+            sale_price=200,
+            average_cost=100,
+        )
+        migration = importlib.import_module(
+            "inventory.migrations.0002_import_current_stock"
+        )
+        migration.import_stock(apps, None)
+        imported = Item.objects.get(name=legacy.name)
+        self.assertEqual(imported.line_set.get().quantity, Decimal("12.750"))
+        self.assertEqual(imported.line_set.get().entry.kind, "opening")
+        self.assertEqual(owner.membership.company_id, imported.company_id)
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.sale_price, 200)

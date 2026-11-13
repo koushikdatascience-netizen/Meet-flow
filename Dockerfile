@@ -5,8 +5,8 @@ WORKDIR /app
 COPY requirements.txt requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
 COPY . .
-RUN DJANGO_DEBUG=1 python manage.py collectstatic --noinput
-RUN chmod +x /app/deploy/entrypoint.sh
+RUN DJANGO_DEBUG=1 RENDER= DATABASE_URL= POSTGRES_DB= python manage.py collectstatic --noinput
+RUN chmod +x /app/deploy/entrypoint.sh /app/deploy/start.sh
 EXPOSE 8000
 ENTRYPOINT ["/app/deploy/entrypoint.sh"]
-CMD ["gunicorn","config.wsgi:application","--bind","0.0.0.0:8000","--workers","3"]
+CMD ["/app/deploy/start.sh"]

@@ -1,0 +1,20 @@
+{% load static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ page_name|default:'Sign in' }} · MeatFlow</title><link rel="stylesheet" href="{% static 'inventory/workspace.css' %}"></head>
+<body class="{% if not request.user.is_authenticated %}guest{% endif %}">
+{% if request.user.is_authenticated %}
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="{% url 'home' %}"><span class="brand-mark">m</span><span>meatflow<small>STOCK MANAGEMENT</small></span></a>
+<div class="company-label"><span class="status-dot"></span>{{ nav_member.company.name|default:'Platform administration' }}</div>
+<p class="nav-label">WORKSPACE</p>
+<nav aria-label="Main navigation">
+<a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' or request.resolver_match.url_name == 'stock_entries' or request.resolver_match.url_name == 'stock_delete' or request.resolver_match.url_name == 'stock_receipt' or request.resolver_match.url_name == 'stock_items' or request.resolver_match.url_name == 'stock_item_remove' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">⌂</span>Home</a>
+{% if 'reports' in nav_member.allowed_features %}<a href="{% url 'stock_report' %}" {% if request.resolver_match.url_name == 'stock_report' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">▤</span>Reports</a>{% endif %}
+{% if nav_member.role == 'admin' %}<a href="{% url 'stock_users' %}" {% if request.resolver_match.url_name == 'stock_users' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">♙</span>Users</a>{% endif %}
+{% if request.user.is_superuser %}<a href="{% url 'companies' %}" {% if request.resolver_match.url_name == 'companies' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">▦</span>Companies</a>{% endif %}
+</nav>
+<div class="sidebar-bottom"><p class="nav-label">YOUR ACCOUNT</p><div class="account"><span class="avatar">{{ request.user.username|first|upper }}</span><div><strong>{{ request.user.username }}</strong><small>{{ nav_member.get_role_display|default:'Platform admin' }}</small></div></div><a href="{% url 'password_change' %}">Change password</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="signout">Sign out <span>↗</span></button></form></div>
+</aside>
+{% endif %}
+<div class="workspace"><header class="workspace-header">{% if request.user.is_authenticated %}<button class="mobile-toggle" aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false" onclick="const open=document.body.classList.toggle('nav-open');this.setAttribute('aria-expanded',open)">☰</button><span class="breadcrumb">Workspace <span>/</span> <strong>{{ page_name|default:'Account' }}</strong></span><span class="header-note"><span class="status-dot"></span>Stock workspace</span>{% else %}<a class="guest-brand" href="/">meatflow</a>{% endif %}</header>
+<main>{% for message in messages %}<div class="message" role="status">{{ message }}</div>{% endfor %}{% block content %}{% endblock %}</main><footer class="workspace-footer">MeatFlow · Inventory workspace</footer></div>
+</body></html>
