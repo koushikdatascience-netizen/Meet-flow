@@ -1,5 +1,9 @@
 # Render deployment of the existing Meet-flow service
 
+## One-time live stock cleanup
+
+Only when the owner explicitly requests a full stock reset: set `MEATFLOW_CLEAR_STOCK_ONCE` to a new UUID on the live Render service, then deploy with Docker Command blank. The command only runs when `RENDER=true`. It locks the workspaces, serializes the active and legacy item/stock/transaction tables, verifies a SHA-256 checked compressed backup, stores that backup persistently in `inventory_stockclearbackup`, and clears those tables in the same transaction. Backup failure rolls back the operation. Users, memberships, permissions, categories, settings and previous backups remain. Existing numeric IDs are not reset. The same UUID never clears stock again, so subsequent restarts cannot erase newly entered records. Remove the variable immediately after the successful cleanup message. A new UUID requests another full cleanup; do not rotate it casually. Backups contain business records and have no public download route. Local data is not changed by deployment. This command does not transfer or clear the developer's local database.
+
 The Docker image now serves static files using WhiteNoise, reads Render's exact assigned hostname, trusts Render's HTTPS proxy, accepts `DATABASE_URL`, runs migrations on startup and binds Gunicorn to `$PORT`. It does not create accounts or publish local data automatically.
 
 In the existing Render **Web Service**:

@@ -13,6 +13,14 @@ class AdminPasswordReset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class StockClearBackup(models.Model):
+    request_id = models.UUIDField(unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    counts = models.JSONField()
+    sha256 = models.CharField(max_length=64)
+    compressed_data = models.BinaryField()
+
+
 class Company(models.Model):
     name = models.CharField(max_length=160)
     active = models.BooleanField(default=True)
