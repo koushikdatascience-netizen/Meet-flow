@@ -148,6 +148,14 @@ def entries(request, kind):
             quantities = request.POST.getlist("quantity")
             if len(ids) != len(quantities) or len(ids) > 100:
                 raise ValidationError("Invalid item rows.")
+            if any(
+                not q.isascii() or not q.isdigit()
+                for pk, q in zip(ids, quantities)
+                if pk or q
+            ):
+                raise ValidationError(
+                    "Enter whole numbers of pieces only, such as 1, 2 or 10. Decimals are not allowed."
+                )
             rows = [(int(pk), Decimal(q)) for pk, q in zip(ids, quantities) if pk or q]
             if any(
                 not q.is_finite()
@@ -155,15 +163,13 @@ def entries(request, kind):
                 or q > Decimal("9999999999.999")
                 for _, q in rows
             ):
-                raise ValidationError(
-                    "Use quantities with at most three decimal places."
-                )
+                raise ValidationError("Enter a valid whole-number quantity of pieces.")
             post_entry(
                 company,
                 request.user,
                 kind,
                 date.fromisoformat(request.POST["date"]),
-                request.POST.get("note", "")[:240],
+                request.POST.get("note", "")[:240] if kind != "opening" else "",
                 uuid.UUID(token),
                 rows,
             )

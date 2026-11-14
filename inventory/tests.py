@@ -173,6 +173,31 @@ class StockTests(TestCase):
         self.assertEqual(row[3], "Pieces")
         self.assertEqual(row[-1], 3)
 
+    def test_opening_has_no_notes_and_accepts_digits_only(self):
+        response = self.client.get("/entries/opening/")
+        self.assertNotContains(response, 'name="note"')
+        self.assertContains(response, 'inputmode="numeric"')
+        self.assertContains(response, 'placeholder="Pieces"')
+        token = response.context["token"]
+        data = {
+            "token": token,
+            "date": str(self.today),
+            "item": [str(self.item.pk)],
+            "quantity": ["2.5"],
+            "note": "Should be ignored",
+        }
+        for invalid in ["2.5", "2.0", "1e2", "-2"]:
+            data["quantity"] = [invalid]
+            response = self.client.post("/entries/opening/", data)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "Decimals are not allowed")
+        self.assertFalse(Entry.objects.filter(company=self.company).exists())
+        data["quantity"] = ["12"]
+        self.assertEqual(self.client.post("/entries/opening/", data).status_code, 302)
+        entry = Entry.objects.get(company=self.company)
+        self.assertEqual(entry.note, "")
+        self.assertEqual(entry.lines.get().quantity, 12)
+
     def test_token_is_idempotent(self):
         token = uuid.uuid4()
         first = self.post("purchase", "2", token=token)
