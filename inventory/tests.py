@@ -56,6 +56,23 @@ class StockTests(TestCase):
         self.assertIn("Chicken", csv)
         self.assertNotIn("Amount", csv)
 
+    def test_dates_are_automatic_and_cannot_be_overridden(self):
+        response = self.client.get("/entries/purchase/")
+        self.assertNotContains(response, 'type="date"')
+        data = {
+            "token": response.context["token"],
+            "item": [str(self.item.pk)],
+            "quantity": ["5"],
+            "date": "2000-01-01",
+        }
+        self.assertEqual(self.client.post("/entries/purchase/", data).status_code, 302)
+        self.assertEqual(Entry.objects.get(company=self.company).date, self.today)
+        response = self.client.get("/reports/?start=2000-01-01&end=2000-01-02")
+        self.assertEqual(response.context["start"], self.today)
+        self.assertEqual(response.context["end"], self.today)
+        self.assertNotContains(response, 'type="date"')
+        self.assertEqual(response.context["rows"][0][-1], 5)
+
     def test_opening_includes_purchases_and_closing_carries_to_following_days(self):
         start = self.today - timedelta(days=2)
         self.post("opening", "10", start)
@@ -64,7 +81,20 @@ class StockTests(TestCase):
         self.post("purchase", "4", start + timedelta(days=1))
         self.post("sale", "6", start + timedelta(days=1))
         url = f"/reports/?start={start}&end={self.today}"
-        rows = self.client.get(url).context["rows"]
+
+        def daily_rows():
+            from unittest.mock import patch
+
+            result = []
+            for offset in range(3):
+                with patch(
+                    "inventory.views.timezone.localdate",
+                    return_value=start + timedelta(days=offset),
+                ):
+                    result.extend(self.client.get("/reports/").context["rows"])
+            return result
+
+        rows = daily_rows()
         self.assertEqual(
             [row[4:] for row in rows], [[15, 5, 3, 12], [16, 4, 6, 10], [10, 0, 0, 10]]
         )
@@ -72,11 +102,11 @@ class StockTests(TestCase):
             self.client.get("/reports/").context["rows"][0][4:], [10, 0, 0, 10]
         )
         self.post("purchase", "2", start)
-        rows = self.client.get(url).context["rows"]
+        rows = daily_rows()
         self.assertEqual([row[4] for row in rows], [17, 18, 12])
         self.assertEqual([row[-1] for row in rows], [14, 12, 12])
         reverse_entry(self.company, self.user, sale.pk, "Duplicate sale")
-        rows = self.client.get(url).context["rows"]
+        rows = daily_rows()
         self.assertEqual([row[-1] for row in rows], [17, 15, 15])
         import csv
         from io import StringIO
@@ -90,7 +120,7 @@ class StockTests(TestCase):
         )
         self.assertEqual(len(exported[0]), 8)
         self.assertNotIn("Opening added", exported[0])
-        self.assertEqual([Decimal(value) for value in exported[1][4:]], rows[0][4:])
+        self.assertEqual([Decimal(value) for value in exported[1][4:]], rows[-1][4:])
 
     def test_cross_tenant_items_and_entry_ids_are_rejected(self):
         with self.assertRaises(Item.DoesNotExist):

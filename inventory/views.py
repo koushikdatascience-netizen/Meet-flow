@@ -1,6 +1,6 @@
 import csv
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 
@@ -168,7 +168,7 @@ def entries(request, kind):
                 company,
                 request.user,
                 kind,
-                date.fromisoformat(request.POST["date"]),
+                timezone.localdate(),
                 request.POST.get("note", "")[:240] if kind != "opening" else "",
                 uuid.UUID(token),
                 rows,
@@ -208,8 +208,7 @@ def entries(request, kind):
         kind=kind,
         title=dict(Entry.KINDS)[kind],
         token=token,
-        today=request.POST.get("date", timezone.localdate()),
-        entry_date=request.POST.get("date", str(timezone.localdate())),
+        today=timezone.localdate(),
         note=request.POST.get("note", ""),
         initial_rows=initial_rows,
         items=available,
@@ -327,14 +326,7 @@ def report(request):
     if "reports" not in request.member.allowed_features:
         raise PermissionDenied
     today = timezone.localdate()
-    try:
-        start = date.fromisoformat(request.GET.get("start", str(today)))
-        end = date.fromisoformat(request.GET.get("end", str(today)))
-        if end < start or (end - start).days > 366:
-            raise ValueError
-    except ValueError:
-        start = end = today
-        messages.error(request, "Choose a valid date range of at most 367 days.")
+    start = end = today
     category = request.GET.get("category", "")
     items = Item.objects.filter(company=request.member.company)
     categories = list(Item.Category.values)
