@@ -357,16 +357,16 @@ def report(request):
             added = daily.get((day, item.pk, "opening"), Decimal("0"))
             purchased = daily.get((day, item.pk, "purchase"), Decimal("0"))
             sold = daily.get((day, item.pk, "sale"), Decimal("0"))
-            opening = balances[item.pk] + added + purchased
-            closing = opening - sold
+            opening = balances[item.pk] + added
+            total = opening + purchased
+            closing = total - sold
             rows.append(
                 [
                     day,
                     item.name,
-                    item.category,
-                    item.get_unit_display(),
                     opening,
                     purchased,
+                    total,
                     sold,
                     closing,
                 ]
@@ -376,13 +376,13 @@ def report(request):
     headers = [
         "Date",
         "Item",
-        "Category",
-        "Unit",
         "Opening stock",
         "Purchase",
+        "Total",
         "Sale",
         "Closing stock",
     ]
+    totals = [sum((row[index] for row in rows), Decimal(0)) for index in range(2, 7)]
     if request.GET.get("format") == "csv":
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="stock-report.csv"'
@@ -399,6 +399,7 @@ def report(request):
                     for value in row
                 ]
             )
+        writer.writerow(["", "Total", *totals])
         return response
     return page(
         request,
@@ -409,4 +410,5 @@ def report(request):
         end=end,
         categories=categories,
         category=category,
+        totals=totals,
     )

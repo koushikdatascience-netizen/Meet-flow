@@ -49,12 +49,53 @@ class StockTests(TestCase):
         self.post("sale", "3")
         response = self.client.get("/reports/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["rows"][0][4:], [15, 5, 3, 12])
+        self.assertEqual(response.context["rows"][0][2:], [10, 5, 15, 3, 12])
         self.assertNotContains(response, "Opening added")
         csv = self.client.get("/reports/?format=csv").content.decode("utf-8-sig")
         self.assertIn("Opening stock", csv)
         self.assertIn("Chicken", csv)
         self.assertNotIn("Amount", csv)
+
+    def test_report_totals_and_remaining_stock_match_saved_movements(self):
+        self.post("opening", "20", self.today - timedelta(days=1))
+        self.post("sale", "4", self.today - timedelta(days=1))
+        self.post("purchase", "8")
+        self.post("sale", "7")
+        second = Item.objects.create(
+            company=self.company, name="Fish pieces", category="Fish"
+        )
+        self.post("opening", "10", item=second)
+        purchase = self.post("purchase", "5", item=second)
+        self.post("sale", "2", item=second)
+        response = self.client.get("/reports/")
+        self.assertEqual(
+            response.context["headers"],
+            [
+                "Date",
+                "Item",
+                "Opening stock",
+                "Purchase",
+                "Total",
+                "Sale",
+                "Closing stock",
+            ],
+        )
+        self.assertEqual(response.context["totals"], [26, 13, 39, 9, 30])
+        for row in response.context["rows"]:
+            item = Item.objects.get(company=self.company, name=row[1])
+            balance = sum(
+                (-line.quantity if line.entry.kind == "sale" else line.quantity)
+                for line in item.line_set.filter(
+                    entry__reversed_at__isnull=True
+                ).select_related("entry")
+            )
+            self.assertEqual(row[-1], balance)
+            self.assertEqual(row[2] + row[3], row[4])
+            self.assertEqual(row[4] - row[5], row[6])
+        filtered = self.client.get("/reports/?category=Fish")
+        self.assertEqual(filtered.context["totals"], [10, 5, 15, 2, 13])
+        reverse_entry(self.company, self.user, purchase.pk, "Duplicate purchase")
+        self.assertEqual(self.client.get("/reports/").context["totals"][-1], 25)
 
     def test_dates_are_automatic_and_cannot_be_overridden(self):
         response = self.client.get("/entries/purchase/")
@@ -96,10 +137,11 @@ class StockTests(TestCase):
 
         rows = daily_rows()
         self.assertEqual(
-            [row[4:] for row in rows], [[15, 5, 3, 12], [16, 4, 6, 10], [10, 0, 0, 10]]
+            [row[2:] for row in rows],
+            [[10, 5, 15, 3, 12], [12, 4, 16, 6, 10], [10, 0, 10, 0, 10]],
         )
         self.assertEqual(
-            self.client.get("/reports/").context["rows"][0][4:], [10, 0, 0, 10]
+            self.client.get("/reports/").context["rows"][0][2:], [10, 0, 10, 0, 10]
         )
         self.post("purchase", "2", start)
         rows = daily_rows()
@@ -118,9 +160,9 @@ class StockTests(TestCase):
                 )
             )
         )
-        self.assertEqual(len(exported[0]), 8)
+        self.assertEqual(len(exported[0]), 7)
         self.assertNotIn("Opening added", exported[0])
-        self.assertEqual([Decimal(value) for value in exported[1][4:]], rows[-1][4:])
+        self.assertEqual([Decimal(value) for value in exported[1][2:]], rows[-1][2:])
 
     def test_cross_tenant_items_and_entry_ids_are_rejected(self):
         with self.assertRaises(Item.DoesNotExist):
@@ -200,7 +242,7 @@ class StockTests(TestCase):
         self.assertFalse(Entry.objects.filter(company=self.company).exists())
         self.post("purchase", "3")
         row = self.client.get("/reports/").context["rows"][0]
-        self.assertEqual(row[3], "Pieces")
+        self.assertEqual(len(row), 7)
         self.assertEqual(row[-1], 3)
 
     def test_opening_has_no_notes_and_accepts_digits_only(self):
