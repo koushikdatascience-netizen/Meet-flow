@@ -49,11 +49,48 @@ class StockTests(TestCase):
         self.post("sale", "3")
         response = self.client.get("/reports/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["rows"][0][4:], [10, 0, 5, 3, 12])
+        self.assertEqual(response.context["rows"][0][4:], [15, 5, 3, 12])
+        self.assertNotContains(response, "Opening added")
         csv = self.client.get("/reports/?format=csv").content.decode("utf-8-sig")
         self.assertIn("Opening stock", csv)
         self.assertIn("Chicken", csv)
         self.assertNotIn("Amount", csv)
+
+    def test_opening_includes_purchases_and_closing_carries_to_following_days(self):
+        start = self.today - timedelta(days=2)
+        self.post("opening", "10", start)
+        self.post("purchase", "5", start)
+        sale = self.post("sale", "3", start)
+        self.post("purchase", "4", start + timedelta(days=1))
+        self.post("sale", "6", start + timedelta(days=1))
+        url = f"/reports/?start={start}&end={self.today}"
+        rows = self.client.get(url).context["rows"]
+        self.assertEqual(
+            [row[4:] for row in rows], [[15, 5, 3, 12], [16, 4, 6, 10], [10, 0, 0, 10]]
+        )
+        self.assertEqual(
+            self.client.get("/reports/").context["rows"][0][4:], [10, 0, 0, 10]
+        )
+        self.post("purchase", "2", start)
+        rows = self.client.get(url).context["rows"]
+        self.assertEqual([row[4] for row in rows], [17, 18, 12])
+        self.assertEqual([row[-1] for row in rows], [14, 12, 12])
+        reverse_entry(self.company, self.user, sale.pk, "Duplicate sale")
+        rows = self.client.get(url).context["rows"]
+        self.assertEqual([row[-1] for row in rows], [17, 15, 15])
+        import csv
+        from io import StringIO
+
+        exported = list(
+            csv.reader(
+                StringIO(
+                    self.client.get(url + "&format=csv").content.decode("utf-8-sig")
+                )
+            )
+        )
+        self.assertEqual(len(exported[0]), 8)
+        self.assertNotIn("Opening added", exported[0])
+        self.assertEqual([Decimal(value) for value in exported[1][4:]], rows[0][4:])
 
     def test_cross_tenant_items_and_entry_ids_are_rejected(self):
         with self.assertRaises(Item.DoesNotExist):

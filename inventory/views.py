@@ -356,11 +356,11 @@ def report(request):
     day = start
     while day <= end:
         for item in item_list:
-            opening = balances[item.pk]
             added = daily.get((day, item.pk, "opening"), Decimal("0"))
             purchased = daily.get((day, item.pk, "purchase"), Decimal("0"))
             sold = daily.get((day, item.pk, "sale"), Decimal("0"))
-            closing = opening + added + purchased - sold
+            opening = balances[item.pk] + added + purchased
+            closing = opening - sold
             rows.append(
                 [
                     day,
@@ -368,7 +368,6 @@ def report(request):
                     item.category,
                     item.unit,
                     opening,
-                    added,
                     purchased,
                     sold,
                     closing,
@@ -382,7 +381,6 @@ def report(request):
         "Category",
         "Unit",
         "Opening stock",
-        "Opening added",
         "Purchase",
         "Sale",
         "Closing stock",
