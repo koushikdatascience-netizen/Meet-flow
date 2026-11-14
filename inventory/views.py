@@ -532,11 +532,20 @@ def report(request):
         raise PermissionDenied
     today = timezone.localdate()
     start = end = today
-    if request.GET.get("date"):
-        try:
-            start = end = date.fromisoformat(request.GET["date"])
-        except ValueError:
-            messages.error(request, "Choose a valid date.")
+    try:
+        start = date.fromisoformat(
+            request.GET.get("start") or request.GET.get("date") or today.isoformat()
+        )
+        end = date.fromisoformat(
+            request.GET.get("end") or request.GET.get("date") or start.isoformat()
+        )
+        if end < start:
+            raise ValueError
+    except ValueError:
+        start = end = today
+        messages.error(
+            request, "Choose valid From and To dates. To must be on or after From."
+        )
     category = request.GET.get("category", "")
     items = Item.objects.filter(company=request.member.company)
     categories = list(
@@ -573,6 +582,10 @@ def report(request):
             key = (line.entry.date, line.item_id, line.entry.kind)
             daily[key] = daily.get(key, Decimal("0")) + line.quantity
     rows = []
+    period_opening = sum(balances.values(), Decimal(0)) + sum(
+        (quantity for (_, _, kind), quantity in daily.items() if kind == "opening"),
+        Decimal(0),
+    )
     day = start
     while day <= end:
         for item in item_list:
@@ -594,6 +607,8 @@ def report(request):
                 ]
             )
             balances[item.pk] = closing
+        if day == end:
+            break
         day += timedelta(days=1)
     headers = [
         "Date",
@@ -604,7 +619,15 @@ def report(request):
         "Sale",
         "Closing stock",
     ]
-    totals = [sum((row[index] for row in rows), Decimal(0)) for index in range(2, 7)]
+    purchases = sum((row[3] for row in rows), Decimal(0))
+    sales = sum((row[5] for row in rows), Decimal(0))
+    totals = [
+        period_opening,
+        purchases,
+        period_opening + purchases,
+        sales,
+        sum(balances.values(), Decimal(0)),
+    ]
     if request.GET.get("format") == "csv":
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="stock-report.csv"'
@@ -634,6 +657,5 @@ def report(request):
         category=category,
         filter_items=filter_items,
         selected_item=selected_item,
-        selected_date=start.isoformat(),
         totals=totals,
     )

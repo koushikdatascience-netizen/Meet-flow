@@ -62,16 +62,27 @@ class StockTests(TestCase):
         self.post("purchase", "5")
         self.post("sale", "3")
         Item.objects.create(company=self.company, name="Fish", category="Fish")
-        filters = {"date": yesterday.isoformat(), "category": "Chicken", "item": str(self.item.pk)}
+        filters = {
+            "date": yesterday.isoformat(),
+            "category": "Chicken",
+            "item": str(self.item.pk),
+        }
         response = self.client.get("/reports/", filters)
         self.assertEqual(len(response.context["rows"]), 1)
-        self.assertEqual(response.context["rows"][0], [yesterday, "Chicken", 10, 0, 10, 0, 10])
-        self.assertContains(response, 'name="date"')
+        self.assertEqual(
+            response.context["rows"][0], [yesterday, "Chicken", 10, 0, 10, 0, 10]
+        )
+        self.assertContains(response, 'name="start"')
+        self.assertContains(response, 'name="end"')
         self.assertContains(response, 'name="item"')
-        csv = self.client.get("/reports/", {**filters, "format": "csv"}).content.decode("utf-8-sig")
+        csv = self.client.get("/reports/", {**filters, "format": "csv"}).content.decode(
+            "utf-8-sig"
+        )
         self.assertIn(f"{yesterday},Chicken,10.000,0,10.000,0,10.000", csv)
         self.assertNotIn("Fish", csv)
-        response = self.client.get("/reports/", {"item": str(self.foreign.pk), "date": "invalid"})
+        response = self.client.get(
+            "/reports/", {"item": str(self.foreign.pk), "date": "invalid"}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["selected_item"], "")
         self.assertEqual(response.context["start"], self.today)
@@ -177,11 +188,38 @@ class StockTests(TestCase):
         }
         self.assertEqual(self.client.post("/entries/purchase/", data).status_code, 302)
         self.assertEqual(Entry.objects.get(company=self.company).date, self.today)
-        response = self.client.get("/reports/?start=2000-01-01&end=2000-01-02")
+        response = self.client.get("/reports/")
         self.assertEqual(response.context["start"], self.today)
         self.assertEqual(response.context["end"], self.today)
         self.assertContains(response, 'type="date"')
         self.assertEqual(response.context["rows"][0][-1], 5)
+
+    def test_report_range_totals_do_not_sum_daily_stock_balances(self):
+        start = self.today - timedelta(days=6)
+        self.post("opening", "10", start - timedelta(days=1))
+        self.post("purchase", "5", start)
+        self.post("sale", "3", start + timedelta(days=1))
+        self.post("purchase", "2", self.today)
+        params = {
+            "start": start.isoformat(),
+            "end": self.today.isoformat(),
+            "category": "Chicken",
+            "item": str(self.item.pk),
+        }
+        response = self.client.get("/reports/", params)
+        self.assertEqual(len(response.context["rows"]), 7)
+        self.assertEqual(response.context["rows"][0][2:], [10, 5, 15, 0, 15])
+        self.assertEqual(response.context["rows"][-1][2:], [12, 2, 14, 0, 14])
+        self.assertEqual(response.context["totals"], [10, 7, 17, 3, 14])
+        csv = self.client.get("/reports/", {**params, "format": "csv"}).content.decode(
+            "utf-8-sig"
+        )
+        self.assertIn(",Total,10.000,7.000,17.000,3.000,14.000", csv)
+        invalid = self.client.get(
+            "/reports/", {"start": self.today.isoformat(), "end": start.isoformat()}
+        )
+        self.assertEqual(invalid.context["start"], self.today)
+        self.assertContains(invalid, "Choose valid From and To dates")
 
     def test_opening_includes_purchases_and_closing_carries_to_following_days(self):
         start = self.today - timedelta(days=2)
@@ -231,7 +269,13 @@ class StockTests(TestCase):
         )
         self.assertEqual(len(exported[0]), 7)
         self.assertNotIn("Opening added", exported[0])
-        self.assertEqual([Decimal(value) for value in exported[1][2:]], rows[-1][2:])
+        self.assertEqual(
+            [[Decimal(value) for value in row[2:]] for row in exported[1:-1]],
+            [row[2:] for row in rows],
+        )
+        self.assertEqual(
+            [Decimal(value) for value in exported[-1][2:]], [10, 11, 21, 6, 15]
+        )
 
     def test_cross_tenant_items_and_entry_ids_are_rejected(self):
         with self.assertRaises(Item.DoesNotExist):
