@@ -200,7 +200,7 @@ def entries(request, kind):
                 request.user,
                 kind,
                 timezone.localdate(),
-                request.POST.get("note", "")[:240] if kind != "opening" else "",
+                "",
                 uuid.UUID(token),
                 rows,
             )
@@ -240,7 +240,6 @@ def entries(request, kind):
         title=dict(Entry.KINDS)[kind],
         token=token,
         today=timezone.localdate(),
-        note=request.POST.get("note", ""),
         initial_rows=initial_rows,
         items=available,
         entries=Paginator(
@@ -262,7 +261,7 @@ def delete_entry(request, pk):
     if request.method == "POST":
         try:
             reverse_entry(
-                request.member.company, request.user, pk, request.POST.get("reason", "")
+                request.member.company, request.user, pk, "Deleted by user confirmation"
             )
             messages.success(request, "Entry deleted by reversal. Stock recalculated.")
             return redirect("stock_entries", kind=entry.kind)

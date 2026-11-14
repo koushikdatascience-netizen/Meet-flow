@@ -13,7 +13,12 @@ class ItemForm(forms.ModelForm):
 
 class UserForm(forms.Form):
     username = forms.CharField(max_length=150)
-    temporary_password = forms.CharField(widget=forms.PasswordInput, required=False)
+    temporary_password = forms.CharField(
+        label="Password",
+        widget=forms.PasswordInput,
+        required=False,
+        help_text="Leave blank to keep the current password.",
+    )
     role = forms.ChoiceField(choices=Membership.ROLES)
     active = forms.BooleanField(required=False, initial=True)
     features = forms.MultipleChoiceField(
@@ -22,11 +27,12 @@ class UserForm(forms.Form):
             ("opening", "Opening stock"),
             ("purchase", "Purchases"),
             ("sale", "Sales"),
-            ("delete", "Delete entries by reversal"),
-            ("reports", "Reports and sheet export"),
+            ("delete", "Delete entries"),
+            ("reports", "Reports"),
         ],
         widget=forms.CheckboxSelectMultiple,
-        help_text="Choose exactly what this staff member can do. Administrators always have full access. Other roles cannot manage users or item setup.",
+        label="Allowed actions",
+        help_text="Tick the actions this person can use.",
     )
 
     def clean_username(self):

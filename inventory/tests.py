@@ -56,6 +56,34 @@ class StockTests(TestCase):
         self.assertIn("Chicken", csv)
         self.assertNotIn("Amount", csv)
 
+    def test_simple_forms_have_no_notes_and_delete_needs_only_confirmation(self):
+        for kind in ["purchase", "sale", "opening"]:
+            self.assertNotContains(
+                self.client.get("/entries/" + kind + "/"), 'name="note"'
+            )
+        response = self.client.get("/entries/purchase/")
+        payload = {
+            "token": response.context["token"],
+            "item": [str(self.item.pk)],
+            "quantity": ["5"],
+            "note": "Ignored text",
+        }
+        self.assertEqual(
+            self.client.post("/entries/purchase/", payload).status_code, 302
+        )
+        entry = Entry.objects.get(company=self.company)
+        self.assertEqual(entry.note, "")
+        page = self.client.get(f"/entries/{entry.pk}/delete/")
+        self.assertNotContains(page, 'name="reason"')
+        self.assertContains(page, "Yes, delete")
+        self.assertEqual(
+            self.client.post(f"/entries/{entry.pk}/delete/").status_code, 302
+        )
+        entry.refresh_from_db()
+        self.assertEqual(entry.reversed_by, self.user)
+        self.assertEqual(entry.reversal_reason, "Deleted by user confirmation")
+        self.assertEqual(self.client.get("/reports/").context["totals"][-1], 0)
+
     def test_home_category_card_lists_fixed_categories_and_filters_items(self):
         Item.objects.create(company=self.company, name="Fish item", category="Fish")
         self.assertContains(self.client.get("/"), "Browse categories")
