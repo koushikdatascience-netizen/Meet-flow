@@ -1,8 +1,20 @@
-{% extends 'inventory/base.html' %}{% block content %}<a class="back-link" href="{% url 'home' %}">← Back</a><h2>Users</h2><form method="post" class="panel form-panel">{% csrf_token %}{{ form.as_p }}<button>Save user</button></form><div class="scroll" role="region" aria-label="Users table" tabindex="0"><table><tr><th>Username</th><th>Role</th><th>Active</th><th></th></tr>{% for member in users %}<tr><td>{{ member.user.username }}</td><td>{{ member.get_role_display }}</td><td>{{ member.user.is_active }}</td><td><a href="?edit={{ member.pk }}">Edit</a></td></tr>{% endfor %}</table></div>
-
+{% extends 'inventory/base.html' %}{% block content %}
+<a class="back-link" href="{% url 'home' %}">Back</a><h2>Users</h2>
+<form method="post" class="panel form-panel">{% csrf_token %}
+{{ form.non_field_errors }}
+{% for field in form %}{% if field.name != 'features' %}<p>{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}</p>{% endif %}{% endfor %}
+<h3>Permissions</h3><p>Select one action or combine several. Administrators have full access.</p>{{ form.features.errors }}
+{% for title, checkboxes in form.permission_groups %}<fieldset class="permission-group"><legend>{{ title }}</legend><button type="button" class="secondary permission-toggle">Select all</button><div class="permission-actions">{% for checkbox in checkboxes %}{{ checkbox }}{% endfor %}</div></fieldset>{% endfor %}
+<p class="muted">Closing stock is calculated automatically from opening stock, purchases and stock out. It cannot be edited separately.</p>
+<p class="muted">Staff passwords need at least 4 characters; admin passwords need at least 8. Users keep the password you set.</p><button>Save user</button></form>
+<div class="scroll" role="region" aria-label="Users table" tabindex="0"><table><tr><th>Username</th><th>Role</th><th>Active</th><th></th></tr>{% for member in users %}<tr><td>{{ member.user.username }}</td><td>{{ member.get_role_display }}</td><td>{{ member.user.is_active }}</td><td><a href="?edit={{ member.pk }}">Edit</a></td></tr>{% endfor %}</table></div>
 {% if allow_clear_stock %}<p><a class="button secondary" href="{% url 'clear_stock' %}">Clear stock data</a></p>{% endif %}
+{{ role_presets|json_script:'role-presets' }}
 <script>
 const roleField=document.getElementById('id_role');
-const presets={admin:['opening','purchase','sale','edit','delete','reports'],manager:['opening','purchase','sale','edit','delete','reports'],worker:['purchase','sale'],support:['reports'],cook:['sale'],server:['sale'],operator:['opening','purchase','sale','edit','delete','reports'],viewer:['reports']};
-if(roleField){roleField.addEventListener('change',()=>{for(const box of document.querySelectorAll('input[name="features"]')){box.checked=(presets[roleField.value]||[]).includes(box.value);}});}
+const presets=JSON.parse(document.getElementById('role-presets').textContent);
+function updateToggles(){for(const group of document.querySelectorAll('.permission-group')){const boxes=Array.from(group.querySelectorAll('input[name="features"]'));group.querySelector('.permission-toggle').textContent=boxes.every(box=>box.checked)?'Deselect all':'Select all';}}
+for(const group of document.querySelectorAll('.permission-group')){group.querySelector('.permission-toggle').addEventListener('click',()=>{const boxes=Array.from(group.querySelectorAll('input[name="features"]'));const next=!boxes.every(box=>box.checked);for(const box of boxes)box.checked=next;updateToggles();});group.addEventListener('change',updateToggles);}
+if(roleField){roleField.addEventListener('change',()=>{for(const box of document.querySelectorAll('input[name="features"]')){box.checked=(presets[roleField.value]||[]).includes(box.value);}updateToggles();});}
+updateToggles();
 </script>{% endblock %}

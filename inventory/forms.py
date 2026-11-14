@@ -1,8 +1,9 @@
 from django import forms
-from django.contrib.auth import get_user_model, password_validation
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 
 from .models import Item, Membership, ItemCategory, Company
+from .permissions import FEATURE_GROUPS, expand_features
 
 
 class ItemForm(forms.ModelForm):
@@ -47,14 +48,7 @@ class UserForm(forms.Form):
     active = forms.BooleanField(required=False, initial=True)
     features = forms.MultipleChoiceField(
         required=False,
-        choices=[
-            ("opening", "Opening stock"),
-            ("purchase", "Purchases"),
-            ("sale", "Sales"),
-            ("edit", "Edit entries"),
-            ("delete", "Delete entries"),
-            ("reports", "Reports"),
-        ],
+        choices=[choice for _, choices in FEATURE_GROUPS for choice in choices],
         widget=forms.CheckboxSelectMultiple,
         label="Allowed actions",
         help_text="Tick the actions this person can use.",
@@ -65,17 +59,33 @@ class UserForm(forms.Form):
         get_user_model()._meta.get_field("username").run_validators(value)
         return value
 
+    def __init__(self, *args, target_user=None, **kwargs):
+        self.target_user = target_user
+        original = args[0] if args else kwargs.get("data")
+        if original is not None:
+            data = original.copy()
+            selected = data.getlist("features") if hasattr(data, "getlist") else data.get("features", [])
+            legacy = {"opening", "purchase", "sale", "edit", "delete", "reports"}
+            values = list(dict.fromkeys(expand_features(selected) + [f for f in selected if f not in legacy]))
+            if hasattr(data, "setlist"):
+                data.setlist("features", values)
+            else:
+                data["features"] = values
+            if args:
+                args = (data, *args[1:])
+            else:
+                kwargs["data"] = data
+        super().__init__(*args, **kwargs)
+
+    @property
+    def permission_groups(self):
+        fields = {widget.data["value"]: widget for widget in self["features"]}
+        return [(label, [fields[value] for value, _ in choices]) for label, choices in FEATURE_GROUPS]
+
     def clean(self):
         data = super().clean()
-        if data.get("role") == "viewer" and any(
-            feature != "reports" for feature in data.get("features", [])
-        ):
-            raise ValidationError(
-                "Report viewers can only have report access. Select Stock operator for stock entry features."
-            )
-        if data.get("temporary_password"):
-            password_validation.validate_password(
-                data["temporary_password"],
-                get_user_model()(username=data.get("username", "")),
-            )
+        password = data.get("temporary_password")
+        admin = data.get("role") == "admin" or bool(self.target_user and self.target_user.is_superuser)
+        if password and len(password) < (8 if admin else 4):
+            self.add_error("temporary_password", "Use at least 8 characters for an administrator." if admin else "Use at least 4 characters.")
         return data

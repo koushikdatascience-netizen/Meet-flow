@@ -8,10 +8,10 @@
 <p class="nav-label">WORKSPACE</p>
 <nav aria-label="Main navigation">
 <a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' or request.resolver_match.url_name == 'stock_entries' or request.resolver_match.url_name == 'stock_delete' or request.resolver_match.url_name == 'stock_receipt' or request.resolver_match.url_name == 'stock_category_remove' or request.resolver_match.url_name == 'stock_categories' or request.resolver_match.url_name == 'stock_items' or request.resolver_match.url_name == 'stock_item_remove' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">⌂</span>Home</a>
-{% if 'reports' in nav_member.allowed_features %}<a href="{% url 'stock_report' %}" {% if request.resolver_match.url_name == 'stock_report' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">▤</span>Reports</a>{% endif %}
+{% if nav_member.can_reports %}<a href="{% url 'stock_report' %}" {% if request.resolver_match.url_name == 'stock_report' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">▤</span>Reports</a>{% endif %}
 {% if nav_member.role == 'admin' %}<a href="{% url 'stock_users' %}" {% if request.resolver_match.url_name == 'stock_users' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">♙</span>Users</a>{% endif %}
 </nav>
-<div class="sidebar-bottom"><p class="nav-label">YOUR ACCOUNT</p><div class="account"><span class="avatar">{{ request.user.username|first|upper }}</span><div><strong>{{ request.user.username }}</strong><small>{{ nav_member.get_role_display|default:'Administrator' }}</small></div></div><a href="{% url 'password_change' %}">Change password</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="signout">Sign out <span>↗</span></button></form></div>
+<div class="sidebar-bottom"><p class="nav-label">YOUR ACCOUNT</p><div class="account"><span class="avatar">{{ request.user.username|first|upper }}</span><div><strong>{{ request.user.username }}</strong><small>{{ nav_member.get_role_display|default:'Administrator' }}</small></div></div><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="signout">Sign out <span>↗</span></button></form></div>
 </aside>
 {% endif %}
 <div class="workspace"><header class="workspace-header">{% if request.user.is_authenticated %}<button class="mobile-toggle" aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">☰</button>{% else %}<a class="guest-brand" href="/">Chatterjee Flow</a>{% endif %}</header>

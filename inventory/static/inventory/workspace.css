@@ -43,3 +43,5 @@ button,.button{font-size:15px;min-height:46px}.action-card{padding:22px}
 
 /* Keep the mobile menu available without a redundant desktop heading bar. */
 @media(min-width:681px){body:not(.guest) .workspace-header{display:none}}
+
+.permission-group{border:1px solid var(--line);border-radius:8px;padding:14px;margin:16px 0}.permission-group legend{font-weight:700;padding:0 6px}.permission-actions{display:flex;gap:20px;flex-wrap:wrap;margin-top:12px}.permission-actions label{display:flex;align-items:center;gap:8px}.permission-toggle{font-size:12px;padding:6px 10px}

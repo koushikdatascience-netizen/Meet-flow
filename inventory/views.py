@@ -43,8 +43,6 @@ def staff_access(role=None):
                     "No active staff access. Contact your administrator."
                 )
             request.member = member
-            if member.must_change_password:
-                return redirect("password_change")
             if role and member.role not in role:
                 raise PermissionDenied
             return view(request, *args, **kwargs)
@@ -84,15 +82,13 @@ def home(request):
                 "The workspace is inactive. Contact your administrator."
             )
         request.member = member
-        if member.must_change_password:
-            return redirect("password_change")
         return page(
             request,
             "home",
             item_count=Item.objects.filter(company=member.company, active=True).count(),
             today=timezone.localdate(),
             recent=Entry.objects.filter(
-                company=member.company, kind__in=member.allowed_features
+                company=member.company, kind__in=[kind for kind, _ in Entry.KINDS if member.can_access(kind)]
             ).select_related("created_by")[:6],
         )
     raise PermissionDenied("No features assigned. Contact your administrator.")
@@ -132,8 +128,10 @@ def clear_stock_view(request):
     )
 
 
-@staff_access(["admin"])
+@staff_access()
 def items(request):
+    if not request.member.can_items:
+        raise PermissionDenied
     category = request.GET.get("category", "")
     if not ItemCategory.objects.filter(
         company=request.member.company, name=category, active=True
@@ -144,6 +142,10 @@ def items(request):
         if request.GET.get("edit")
         else None
     )
+    item_was_active = bool(item and item.active)
+    action = "items_edit" if item else "items_add"
+    if (item or request.method == "POST") and action not in request.member.allowed_features:
+        raise PermissionDenied
     form = ItemForm(
         request.POST or None,
         instance=item,
@@ -155,6 +157,8 @@ def items(request):
             with transaction.atomic():
                 Company.objects.select_for_update().get(pk=request.member.company_id)
                 obj = form.save(commit=False)
+                if item_was_active and not obj.active and "items_delete" not in request.member.allowed_features:
+                    raise PermissionDenied
                 obj.company = request.member.company
                 if not ItemCategory.objects.filter(
                     company=obj.company, name=obj.category, active=True
@@ -182,6 +186,7 @@ def items(request):
             **({"category": category} if category else {}),
         ),
         selected_category=category,
+        can_save=action in request.member.allowed_features,
     )
 
 
@@ -281,8 +286,10 @@ def remove_category(request, pk):
     return page(request, "remove_category", category=category, item_count=count)
 
 
-@staff_access(["admin"])
+@staff_access()
 def remove_item(request, pk):
+    if "items_delete" not in request.member.allowed_features:
+        raise PermissionDenied
     item = get_object_or_404(Item, pk=pk, company=request.member.company)
     if request.method == "POST":
         with transaction.atomic():
@@ -297,16 +304,16 @@ def remove_item(request, pk):
     return page(request, "remove_item", item=item)
 
 
-@staff_access(["admin", "manager", "worker", "support", "cook", "server", "operator"])
+@staff_access()
 def entries(request, kind):
     if kind not in dict(Entry.KINDS):
         raise PermissionDenied
-    if kind not in request.member.allowed_features:
+    if not request.member.can_access(kind):
         raise PermissionDenied
     company = request.member.company
     editing = None
     if request.GET.get("edit"):
-        if "edit" not in request.member.allowed_features:
+        if f"{kind}_edit" not in request.member.allowed_features:
             raise PermissionDenied
         editing = get_object_or_404(
             Entry.objects.prefetch_related("lines__item"),
@@ -315,6 +322,8 @@ def entries(request, kind):
             kind=kind,
             reversed_at__isnull=True,
         )
+    if request.method == "POST" and not editing and f"{kind}_add" not in request.member.allowed_features:
+        raise PermissionDenied
     tokens = request.session.get("stock_tokens", [])
     if request.method == "POST":
         try:
@@ -411,6 +420,9 @@ def entries(request, kind):
         request,
         "entries",
         kind=kind,
+        can_add=f"{kind}_add" in request.member.allowed_features,
+        can_edit=f"{kind}_edit" in request.member.allowed_features,
+        can_delete=f"{kind}_delete" in request.member.allowed_features,
         editing=editing,
         title=dict(Entry.KINDS)[kind],
         token=token,
@@ -426,12 +438,12 @@ def entries(request, kind):
     )
 
 
-@staff_access(["admin", "manager", "worker", "support", "cook", "server", "operator"])
+@staff_access()
 def delete_entry(request, pk):
-    if "delete" not in request.member.allowed_features:
+    if not any(f"{kind}_delete" in request.member.allowed_features for kind, _ in Entry.KINDS):
         raise PermissionDenied
     entry = get_object_or_404(Entry, pk=pk, company=request.member.company)
-    if entry.kind not in request.member.allowed_features:
+    if f"{entry.kind}_delete" not in request.member.allowed_features:
         raise PermissionDenied
     if request.method == "POST":
         try:
@@ -445,14 +457,14 @@ def delete_entry(request, pk):
     return page(request, "delete", entry=entry)
 
 
-@staff_access(["admin", "manager", "worker", "support", "cook", "server", "operator"])
+@staff_access()
 def receipt(request, pk):
     entry = get_object_or_404(
         Entry.objects.prefetch_related("lines__item"),
         pk=pk,
         company=request.member.company,
     )
-    if entry.kind not in request.member.allowed_features:
+    if not request.member.can_access(entry.kind):
         raise PermissionDenied
     return page(request, "receipt", entry=entry)
 
@@ -476,9 +488,9 @@ def users(request):
             "features": member.allowed_features,
         }
         if member
-        else {"features": ["reports"]}
+        else {"features": ["reports_view", "reports_download"]}
     )
-    form = UserForm(request.POST or None, initial=initial)
+    form = UserForm(request.POST or None, initial=initial, target_user=member.user if member else None)
     if request.method == "POST" and form.is_valid():
         try:
             with transaction.atomic():
@@ -494,8 +506,10 @@ def users(request):
                     )
                 if not member and not data["temporary_password"]:
                     raise ValidationError(
-                        "Enter a temporary password for the new user."
+                        "Enter a password for the new user."
                     )
+                if member and member.role != "admin" and data["role"] == "admin" and not data["temporary_password"]:
+                    raise ValidationError("Set an administrator password of at least 8 characters when promoting a user.")
                 user = member.user if member else get_user_model()()
                 user.username = data["username"]
                 user.is_active = data["active"]
@@ -505,8 +519,7 @@ def users(request):
                 obj = member or Membership(company=request.member.company, user=user)
                 obj.role = data["role"]
                 obj.features = data["features"] if data["role"] != "admin" else None
-                if data["temporary_password"]:
-                    obj.must_change_password = True
+                obj.must_change_password = False
                 obj.save()
             return redirect("stock_users")
         except (IntegrityError, ValidationError) as exc:
@@ -520,6 +533,7 @@ def users(request):
         request,
         "users",
         form=form,
+        role_presets={role: Membership.default_features(role) for role, _ in Membership.ROLES},
         users=Membership.objects.filter(company=request.member.company).select_related(
             "user"
         ),
@@ -528,8 +542,11 @@ def users(request):
 
 @staff_access()
 def report(request):
-    if "reports" not in request.member.allowed_features:
+    is_download = request.GET.get("format") == "csv"
+    if not request.member.can_reports or (is_download and "reports_download" not in request.member.allowed_features):
         raise PermissionDenied
+    if not is_download and "reports_view" not in request.member.allowed_features:
+        return page(request, "report_download", today=timezone.localdate())
     today = timezone.localdate()
     start = end = today
     try:

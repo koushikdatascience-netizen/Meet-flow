@@ -78,7 +78,7 @@ class BootstrapTests(TestCase):
 
     def test_rejects_weak_or_incomplete_credentials(self):
         for username, password in [
-            ("owner", "12345678"),
+            ("owner", "1234"),
             ("owner", ""),
             ("", "Random-test-password-876!"),
         ]:

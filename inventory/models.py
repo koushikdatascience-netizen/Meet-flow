@@ -53,20 +53,22 @@ class Membership(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     company = models.ForeignKey(Company, on_delete=models.PROTECT)
     role = models.CharField(max_length=12, choices=ROLES, default="viewer")
-    must_change_password = models.BooleanField(default=True)
+    must_change_password = models.BooleanField(default=False)
     features = models.JSONField(null=True, blank=True, default=None)
 
     @property
     def allowed_features(self):
+        from .permissions import ALL_FEATURES, expand_features
         if self.role == "admin":
-            return ["opening", "purchase", "sale", "edit", "delete", "reports"]
-        if self.features is not None:
-            return self.features
-        return self.default_features(self.role)
+            return list(ALL_FEATURES)
+        return expand_features(self.features if self.features is not None else self.default_features(self.role))
 
     @staticmethod
     def default_features(role):
-        return {
+        from .permissions import ALL_FEATURES, expand_features
+        if role == "admin":
+            return list(ALL_FEATURES)
+        return expand_features({
             "manager": ["opening", "purchase", "sale", "edit", "delete", "reports"],
             "worker": ["purchase", "sale"],
             "support": ["reports"],
@@ -74,7 +76,30 @@ class Membership(models.Model):
             "server": ["sale"],
             "operator": ["opening", "purchase", "sale", "edit", "delete", "reports"],
             "viewer": ["reports"],
-        }.get(role, [])
+        }.get(role, []))
+
+    def can_access(self, module):
+        return any(feature.startswith(module + "_") for feature in self.allowed_features)
+
+    @property
+    def can_items(self):
+        return self.can_access("items")
+
+    @property
+    def can_opening(self):
+        return self.can_access("opening")
+
+    @property
+    def can_purchase(self):
+        return self.can_access("purchase")
+
+    @property
+    def can_sale(self):
+        return self.can_access("sale")
+
+    @property
+    def can_reports(self):
+        return self.can_access("reports")
 
 
 class ItemCategory(models.Model):

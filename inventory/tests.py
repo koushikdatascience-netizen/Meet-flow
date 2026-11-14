@@ -403,10 +403,10 @@ class StockTests(TestCase):
             self.assertEqual(self.client.get(path).status_code, 403)
         self.assertEqual(self.client.get("/reports/").status_code, 200)
 
-    def test_password_change_required_and_legacy_routes_closed(self):
+    def test_legacy_password_flag_does_not_block_access_and_legacy_routes_closed(self):
         self.member.must_change_password = True
         self.member.save()
-        self.assertRedirects(self.client.get("/reports/"), "/password/")
+        self.assertEqual(self.client.get("/reports/").status_code, 200)
         self.assertEqual(self.client.get("/admin/").status_code, 403)
         self.assertEqual(self.client.get("/invoice/1/").status_code, 404)
 
@@ -427,7 +427,7 @@ class StockTests(TestCase):
         self.assertFalse(user.is_superuser)
         self.assertFalse(user.is_staff)
         self.assertEqual(user.membership.company, self.company)
-        self.assertTrue(user.membership.must_change_password)
+        self.assertFalse(user.membership.must_change_password)
 
     def test_category_filter_and_csv_formula_escape(self):
         Item.objects.create(company=self.company, name="=1+1", category="Others")
@@ -510,7 +510,7 @@ class StockTests(TestCase):
             self.client.post(f"/items/{self.item.pk}/remove/").status_code, 403
         )
 
-    def test_password_change_unlocks_account(self):
+    def test_password_route_does_not_change_password(self):
         self.member.must_change_password = True
         self.member.save()
         response = self.client.post(
@@ -522,8 +522,9 @@ class StockTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        self.member.refresh_from_db()
-        self.assertFalse(self.member.must_change_password)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("test-password"))
+        self.assertFalse(self.user.check_password("Different-good-password-824!"))
 
     def test_admin_cannot_edit_platform_owner(self):
         owner = get_user_model().objects.create_superuser(

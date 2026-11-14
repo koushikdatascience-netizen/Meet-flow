@@ -1,16 +1,11 @@
-from django.contrib.auth.views import PasswordChangeView
-from django.urls import reverse_lazy
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import redirect
 
-from .models import Membership
+from .workspace import member_for
 
 
-class ChangePasswordView(PasswordChangeView):
-    template_name = "inventory/password.html"
-    success_url = reverse_lazy("home")
-
-    def form_valid(self, form):
-        result = super().form_valid(form)
-        Membership.objects.filter(user=self.request.user).update(
-            must_change_password=False
-        )
-        return result
+@login_required
+def password_help(request):
+    # Passwords are set by administrators in Users, including for existing accounts.
+    member = member_for(request.user)
+    return redirect("stock_users" if member and member.role == "admin" else "home")

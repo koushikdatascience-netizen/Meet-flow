@@ -2,7 +2,7 @@ from django.contrib.auth import views as auth
 from django.urls import path
 
 from inventory import views
-from inventory.auth import ChangePasswordView
+from inventory.auth import password_help
 from shop.views import health_view
 
 urlpatterns = [
@@ -15,7 +15,7 @@ urlpatterns = [
         name="login",
     ),
     path("logout/", auth.LogoutView.as_view(), name="logout"),
-    path("password/", ChangePasswordView.as_view(), name="password_change"),
+    path("password/", password_help, name="password_change"),
     path("items/", views.items, name="stock_items"),
     path("categories/", views.categories, name="stock_categories"),
     path(

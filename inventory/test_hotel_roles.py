@@ -64,6 +64,6 @@ class HotelRoleTests(TestCase):
         self.assertEqual(response.status_code, 302)
         membership = Membership.objects.get(user__username="new-cook")
         self.assertEqual(membership.role, "cook")
-        self.assertEqual(membership.allowed_features, ["sale"])
-        self.assertTrue(membership.must_change_password)
+        self.assertEqual(membership.allowed_features, ["sale_add"])
+        self.assertFalse(membership.must_change_password)
         self.assertContains(self.client.get("/users/"), "Server / serving staff")
