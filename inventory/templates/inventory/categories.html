@@ -1,5 +1,5 @@
 {% extends 'inventory/base.html' %}{% block content %}
-<a class="back-link" href="{% url 'home' %}">← Home</a>
+<a class="back-link" href="{% url 'home' %}">← Back</a>
 <h1>Item Categories</h1>
 <form method="post" class="panel form-panel">{% csrf_token %}{{ form.as_p }}<div class="entry-actions"><button>{% if editing %}Save changes{% else %}Add category{% endif %}</button>{% if editing %}<a class="button secondary" href="{% url 'stock_categories' %}">Cancel</a>{% endif %}</div></form>
 <div class="action-grid">{% for category in categories %}<section class="panel"><h3>{{ category.name }}</h3><p>{{ category.count }} item{{ category.count|pluralize }}</p><div class="entry-actions"><a class="button" href="{% url 'stock_items' %}?category={{ category.name|urlencode }}">Items</a><a class="button secondary" href="?edit={{ category.pk }}">Edit</a><a class="button secondary" href="{% url 'stock_category_remove' category.pk %}">Delete</a></div></section>{% empty %}<p>No categories. Add one above.</p>{% endfor %}</div>
