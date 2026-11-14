@@ -7,7 +7,7 @@
 {% for title, checkboxes in form.permission_groups %}<fieldset class="permission-group"><legend>{{ title }}</legend><button type="button" class="secondary permission-toggle">Select all</button><div class="permission-actions">{% for checkbox in checkboxes %}{{ checkbox }}{% endfor %}</div></fieldset>{% endfor %}
 <p class="muted">Closing stock is calculated automatically from opening stock, purchases and stock out. It cannot be edited separately.</p>
 <p class="muted">Staff passwords need at least 4 characters; admin passwords need at least 8. Users keep the password you set.</p><button>Save user</button></form>
-<div class="scroll" role="region" aria-label="Users table" tabindex="0"><table><tr><th>Username</th><th>Role</th><th>Active</th><th></th></tr>{% for member in users %}<tr><td>{{ member.user.username }}</td><td>{{ member.get_role_display }}</td><td>{{ member.user.is_active }}</td><td><a href="?edit={{ member.pk }}">Edit</a></td></tr>{% endfor %}</table></div>
+<div class="scroll" role="region" aria-label="Users table" tabindex="0"><table><tr><th>Username</th><th>Role</th><th>Active</th><th></th></tr>{% for member in users %}<tr><td>{{ member.user.username }}</td><td>{{ member.get_role_display }}</td><td>{{ member.user.is_active }}</td><td><a href="?edit={{ member.pk }}">Edit</a>{% if member.user_id != request.user.pk and not member.user.is_superuser %} · <a href="{% url 'stock_user_delete' member.pk %}">Delete</a>{% endif %}</td></tr>{% endfor %}</table></div>
 {% if allow_clear_stock %}<p><a class="button secondary" href="{% url 'clear_stock' %}">Clear stock data</a></p>{% endif %}
 {{ role_presets|json_script:'role-presets' }}
 <script>

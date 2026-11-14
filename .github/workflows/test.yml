@@ -34,4 +34,5 @@ jobs:
         with:
           node-version: '22'
       - run: node --test shop/js_tests/product-search.test.cjs
+      - run: node --test inventory/js_tests/entry-form.test.cjs
       - run: docker build -t meatflow-test .

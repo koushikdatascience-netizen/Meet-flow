@@ -45,3 +45,15 @@ button,.button{font-size:15px;min-height:46px}.action-card{padding:22px}
 @media(min-width:681px){body:not(.guest) .workspace-header{display:none}}
 
 .permission-group{border:1px solid var(--line);border-radius:8px;padding:14px;margin:16px 0}.permission-group legend{font-weight:700;padding:0 6px}.permission-actions{display:flex;gap:20px;flex-wrap:wrap;margin-top:12px}.permission-actions label{display:flex;align-items:center;gap:8px}.permission-toggle{font-size:12px;padding:6px 10px}
+
+.item-picker{position:relative;min-width:0}.item-picker:focus-within{z-index:5}
+#rows .item-picker .search{width:100%;min-width:0}
+.item-suggestions,.item-search-status{position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #b9cbbd;border-radius:7px;box-shadow:0 8px 22px #15362b24;z-index:10}
+.item-suggestions{max-height:280px;overflow-y:auto;overscroll-behavior:contain}
+.item-suggestions [role=option]{padding:11px 13px;cursor:pointer;border-bottom:1px solid var(--line)}
+.item-suggestions [role=option]:last-child{border-bottom:0}
+.item-suggestions [aria-selected=true],.item-suggestions [role=option]:hover{background:#eaf3ec}
+.item-suggestions strong,.item-suggestions small{display:block}.item-suggestions small{color:var(--muted);margin-top:2px}
+.item-search-status{padding:12px;color:var(--muted)}
+.item-suggestions[hidden],.item-search-status[hidden]{display:none}
+@media(max-width:680px){#rows>div{grid-template-columns:minmax(0,1fr)}#rows .item-picker{grid-column:1/-1}.item-suggestions{max-height:220px}}

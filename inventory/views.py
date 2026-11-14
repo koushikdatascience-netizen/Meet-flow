@@ -171,6 +171,7 @@ def items(request):
                 ):
                     raise ValidationError("Unit cannot change after stock entries.")
                 obj.save()
+            messages.success(request, "Item saved.")
             return redirect("stock_items")
         except (IntegrityError, ValidationError) as exc:
             form.add_error(
@@ -183,8 +184,10 @@ def items(request):
         form=form,
         items=Item.objects.filter(
             company=request.member.company,
+            **({} if request.GET.get("removed") == "1" else {"active": True}),
             **({"category": category} if category else {}),
         ),
+        show_removed=request.GET.get("removed") == "1",
         selected_category=category,
         can_save=action in request.member.allowed_features,
     )
@@ -238,7 +241,7 @@ def categories(request):
                 else exc,
             )
     counts = dict(
-        Item.objects.filter(company=request.member.company, active=True)
+        Item.objects.filter(company=request.member.company)
         .values("category")
         .annotate(count=Count("pk"))
         .values_list("category", "count")
@@ -430,11 +433,15 @@ def entries(request, kind):
         initial_rows=initial_rows,
         items=available,
         entries=Paginator(
-            Entry.objects.filter(company=company, kind=kind).prefetch_related(
+            Entry.objects.filter(
+                company=company, kind=kind,
+                **({} if request.GET.get("deleted") == "1" else {"reversed_at__isnull": True}),
+            ).prefetch_related(
                 "lines__item", "reversed_by"
             ),
             25,
         ).get_page(request.GET.get("page")),
+        show_deleted=request.GET.get("deleted") == "1",
     )
 
 
@@ -521,6 +528,7 @@ def users(request):
                 obj.features = data["features"] if data["role"] != "admin" else None
                 obj.must_change_password = False
                 obj.save()
+            messages.success(request, "User saved.")
             return redirect("stock_users")
         except (IntegrityError, ValidationError) as exc:
             form.add_error(
@@ -538,6 +546,31 @@ def users(request):
             "user"
         ),
     )
+
+
+@staff_access(["admin"])
+def delete_user(request, pk):
+    member = get_object_or_404(
+        Membership.objects.select_related("user"),
+        pk=pk, company=request.member.company,
+    )
+    if member.user_id == request.user.pk or member.user.is_superuser:
+        raise PermissionDenied("You cannot delete your own account or the owner account.")
+    if request.method == "POST":
+        with transaction.atomic():
+            Company.objects.select_for_update().get(pk=request.member.company_id)
+            member = get_object_or_404(
+                Membership.objects.select_related("user"),
+                pk=pk, company=request.member.company,
+            )
+            if member.user_id == request.user.pk or member.user.is_superuser:
+                raise PermissionDenied
+            member.user.is_active = False
+            member.user.save(update_fields=["is_active"])
+            member.delete()
+        messages.success(request, "User deleted. Sign-in is disabled; stock history is preserved.")
+        return redirect("stock_users")
+    return page(request, "delete_user", member=member)
 
 
 @staff_access()

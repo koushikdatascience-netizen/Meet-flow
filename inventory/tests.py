@@ -361,8 +361,13 @@ class StockTests(TestCase):
     def test_opening_has_no_notes_and_accepts_digits_only(self):
         response = self.client.get("/entries/opening/")
         self.assertNotContains(response, 'name="note"')
-        self.assertContains(response, 'inputmode="numeric"')
-        self.assertContains(response, 'placeholder="Pieces"')
+        self.assertContains(response, 'entry-form.')
+        from pathlib import Path
+        from django.contrib.staticfiles import finders
+
+        entry_script = Path(finders.find("inventory/entry-form.js")).read_text()
+        self.assertIn('inputmode="numeric"', entry_script)
+        self.assertIn('placeholder="Pieces"', entry_script)
         token = response.context["token"]
         data = {
             "token": token,
