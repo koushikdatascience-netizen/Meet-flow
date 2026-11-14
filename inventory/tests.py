@@ -56,6 +56,27 @@ class StockTests(TestCase):
         self.assertIn("Chicken", csv)
         self.assertNotIn("Amount", csv)
 
+    def test_report_date_category_item_filters_and_csv(self):
+        yesterday = self.today - timedelta(days=1)
+        self.post("opening", "10", yesterday)
+        self.post("purchase", "5")
+        self.post("sale", "3")
+        Item.objects.create(company=self.company, name="Fish", category="Fish")
+        filters = {"date": yesterday.isoformat(), "category": "Chicken", "item": str(self.item.pk)}
+        response = self.client.get("/reports/", filters)
+        self.assertEqual(len(response.context["rows"]), 1)
+        self.assertEqual(response.context["rows"][0], [yesterday, "Chicken", 10, 0, 10, 0, 10])
+        self.assertContains(response, 'name="date"')
+        self.assertContains(response, 'name="item"')
+        csv = self.client.get("/reports/", {**filters, "format": "csv"}).content.decode("utf-8-sig")
+        self.assertIn(f"{yesterday},Chicken,10.000,0,10.000,0,10.000", csv)
+        self.assertNotIn("Fish", csv)
+        response = self.client.get("/reports/", {"item": str(self.foreign.pk), "date": "invalid"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_item"], "")
+        self.assertEqual(response.context["start"], self.today)
+        self.assertNotIn(self.foreign, response.context["filter_items"])
+
     def test_simple_forms_have_no_notes_and_delete_needs_only_confirmation(self):
         for kind in ["purchase", "sale", "opening"]:
             self.assertNotContains(
@@ -159,7 +180,7 @@ class StockTests(TestCase):
         response = self.client.get("/reports/?start=2000-01-01&end=2000-01-02")
         self.assertEqual(response.context["start"], self.today)
         self.assertEqual(response.context["end"], self.today)
-        self.assertNotContains(response, 'type="date"')
+        self.assertContains(response, 'type="date"')
         self.assertEqual(response.context["rows"][0][-1], 5)
 
     def test_opening_includes_purchases_and_closing_carries_to_following_days(self):

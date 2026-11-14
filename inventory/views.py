@@ -1,6 +1,6 @@
 import csv
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 
@@ -532,6 +532,11 @@ def report(request):
         raise PermissionDenied
     today = timezone.localdate()
     start = end = today
+    if request.GET.get("date"):
+        try:
+            start = end = date.fromisoformat(request.GET["date"])
+        except ValueError:
+            messages.error(request, "Choose a valid date.")
     category = request.GET.get("category", "")
     items = Item.objects.filter(company=request.member.company)
     categories = list(
@@ -544,6 +549,14 @@ def report(request):
         messages.error(request, "Choose an available category.")
     if category:
         items = items.filter(category=category)
+    filter_items = list(items.order_by("name"))
+    selected_item = request.GET.get("item", "")
+    if selected_item:
+        if selected_item in {str(item.pk) for item in filter_items}:
+            items = items.filter(pk=selected_item)
+        else:
+            selected_item = ""
+            messages.error(request, "Choose an item in the selected category.")
     item_list = list(items)
     movements = list(
         Line.objects.filter(
@@ -619,5 +632,8 @@ def report(request):
         end=end,
         categories=categories,
         category=category,
+        filter_items=filter_items,
+        selected_item=selected_item,
+        selected_date=start.isoformat(),
         totals=totals,
     )
