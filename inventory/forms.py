@@ -26,6 +26,8 @@ class ItemForm(forms.ModelForm):
             else []
         )
         self.fields["category"].choices = [("", "Choose category"), *choices]
+        if not self.instance.pk:
+            self.fields.pop("active")
 
     class Meta:
         model = Item
@@ -57,6 +59,17 @@ class UserForm(forms.Form):
     def clean_username(self):
         value = self.cleaned_data["username"]
         get_user_model()._meta.get_field("username").run_validators(value)
+        existing = get_user_model().objects.filter(username=value)
+        if self.target_user:
+            existing = existing.exclude(pk=self.target_user.pk)
+        duplicate = existing.first()
+        if duplicate:
+            if not duplicate.is_active:
+                raise ValidationError(
+                    "This username belongs to a disabled or deleted account and is reserved for its history. "
+                    "Choose a different username, or use Edit to reactivate it if it is still listed in Users."
+                )
+            raise ValidationError("This username is already in use. Edit the existing user or choose a different username.")
         return value
 
     def __init__(self, *args, target_user=None, **kwargs):

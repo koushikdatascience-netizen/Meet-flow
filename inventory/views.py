@@ -153,6 +153,7 @@ def items(request):
         company=request.member.company,
     )
     if request.method == "POST" and form.is_valid():
+        restored = False
         try:
             with transaction.atomic():
                 Company.objects.select_for_update().get(pk=request.member.company_id)
@@ -160,6 +161,24 @@ def items(request):
                 if item_was_active and not obj.active and "items_delete" not in request.member.allowed_features:
                     raise PermissionDenied
                 obj.company = request.member.company
+                if not item:
+                    existing = Item.objects.filter(
+                        company=obj.company, name__iexact=obj.name
+                    ).first()
+                    if existing:
+                        if existing.active:
+                            raise ValidationError(
+                                f"{existing.name} already exists in {existing.category}. "
+                                "Open that category or All items to edit it. Zero stock does not remove an item."
+                            )
+                        if "items_edit" not in request.member.allowed_features:
+                            raise ValidationError(
+                                "This item was removed. Ask an administrator to restore it from Show removed items."
+                            )
+                        obj = existing
+                        obj.category = form.cleaned_data["category"]
+                        restored = True
+                    obj.active = True
                 if not ItemCategory.objects.filter(
                     company=obj.company, name=obj.category, active=True
                 ).exists():
@@ -171,7 +190,11 @@ def items(request):
                 ):
                     raise ValidationError("Unit cannot change after stock entries.")
                 obj.save()
-            messages.success(request, "Item saved.")
+            messages.success(
+                request,
+                "Removed item restored. Its stock history is preserved."
+                if restored else "Item saved.",
+            )
             return redirect("stock_items")
         except (IntegrityError, ValidationError) as exc:
             form.add_error(
