@@ -366,7 +366,7 @@ def report(request):
                     day,
                     item.name,
                     item.category,
-                    item.unit,
+                    item.get_unit_display(),
                     opening,
                     purchased,
                     sold,

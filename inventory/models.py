@@ -80,13 +80,14 @@ class Item(models.Model):
     category = models.CharField(
         max_length=80, choices=Category.choices, default=Category.OTHERS
     )
-    unit = models.CharField(
-        max_length=2, choices=[("kg", "Kilogram"), ("pc", "Piece")], default="kg"
-    )
+    unit = models.CharField(max_length=2, choices=[("pc", "Pieces")], default="pc")
     active = models.BooleanField(default=True)
 
     class Meta:
         constraints = [
+            models.CheckConstraint(
+                condition=models.Q(unit="pc"), name="inventory_item_pieces_only"
+            ),
             models.CheckConstraint(
                 condition=models.Q(
                     category__in=["Chicken", "Mutton", "Fish", "Others"]
@@ -185,9 +186,7 @@ def post_entry(company, actor, kind, date, note, token, rows):
         if item.pk in seen:
             raise ValidationError("Each item can appear only once.")
         seen.add(item.pk)
-        if quantity <= 0 or (
-            item.unit == "pc" and quantity != quantity.to_integral_value()
-        ):
+        if quantity <= 0 or quantity != quantity.to_integral_value():
             raise ValidationError(
                 "Use positive quantities and whole numbers for pieces."
             )

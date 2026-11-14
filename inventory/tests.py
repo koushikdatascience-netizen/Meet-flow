@@ -139,6 +139,40 @@ class StockTests(TestCase):
         with self.assertRaises(ValidationError):
             self.post("purchase", "0.5")
 
+    def test_items_use_pieces_and_reject_fractional_entry(self):
+        from .forms import ItemForm
+        from django.db import IntegrityError, transaction
+
+        self.assertNotIn("unit", ItemForm().fields)
+        self.assertEqual(self.item.unit, "pc")
+        data = {
+            "name": "Piece item",
+            "category": "Chicken",
+            "unit": "kg",
+            "active": "on",
+        }
+        self.assertEqual(self.client.post("/items/", data).status_code, 302)
+        self.assertEqual(Item.objects.get(name="Piece item").unit, "pc")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Item.objects.create(company=self.company, name="Bad unit", unit="kg")
+        response = self.client.get("/entries/purchase/")
+        response = self.client.post(
+            "/entries/purchase/",
+            {
+                "token": response.context["token"],
+                "date": str(self.today),
+                "item": [str(self.item.pk)],
+                "quantity": ["1.5"],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "whole numbers")
+        self.assertFalse(Entry.objects.filter(company=self.company).exists())
+        self.post("purchase", "3")
+        row = self.client.get("/reports/").context["rows"][0]
+        self.assertEqual(row[3], "Pieces")
+        self.assertEqual(row[-1], 3)
+
     def test_token_is_idempotent(self):
         token = uuid.uuid4()
         first = self.post("purchase", "2", token=token)
@@ -317,6 +351,7 @@ class StockTests(TestCase):
         )
         legacy = Product.objects.create(
             name="Legacy fish",
+            unit="pc",
             category="Fish",
             stock=Decimal("12.750"),
             sale_price=200,

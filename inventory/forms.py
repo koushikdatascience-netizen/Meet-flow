@@ -8,7 +8,7 @@ from .models import Item, Membership
 class ItemForm(forms.ModelForm):
     class Meta:
         model = Item
-        fields = ["name", "category", "unit", "active"]
+        fields = ["name", "category", "active"]
 
 
 class UserForm(forms.Form):
