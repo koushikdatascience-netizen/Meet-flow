@@ -10,13 +10,22 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from .forms import ItemForm, UserForm
-from .models import Company, Entry, Item, Line, Membership, post_entry, reverse_entry
+from .models import (
+    Company,
+    Entry,
+    Item,
+    Line,
+    Membership,
+    post_entry,
+    reverse_entry,
+    edit_stock_entry,
+)
 from .workspace import member_for
 
 
@@ -169,6 +178,17 @@ def entries(request, kind):
     if kind not in request.member.allowed_features:
         raise PermissionDenied
     company = request.member.company
+    editing = None
+    if request.GET.get("edit"):
+        if "edit" not in request.member.allowed_features:
+            raise PermissionDenied
+        editing = get_object_or_404(
+            Entry.objects.prefetch_related("lines__item"),
+            pk=request.GET["edit"],
+            company=company,
+            kind=kind,
+            reversed_at__isnull=True,
+        )
     tokens = request.session.get("stock_tokens", [])
     if request.method == "POST":
         try:
@@ -195,16 +215,26 @@ def entries(request, kind):
                 for _, q in rows
             ):
                 raise ValidationError("Enter a valid whole-number quantity of pieces.")
-            post_entry(
-                company,
-                request.user,
-                kind,
-                timezone.localdate(),
-                "",
-                uuid.UUID(token),
-                rows,
-            )
-            messages.success(request, "Stock entry saved. Amount: 00.")
+            if editing:
+                edit_stock_entry(
+                    company,
+                    request.user,
+                    editing.pk,
+                    uuid.UUID(token),
+                    int(request.POST.get("version", "-1")),
+                    rows,
+                )
+            else:
+                post_entry(
+                    company,
+                    request.user,
+                    kind,
+                    timezone.localdate(),
+                    "",
+                    uuid.UUID(token),
+                    rows,
+                )
+            messages.success(request, "Saved.")
             return redirect("stock_entries", kind=kind)
         except (
             ValueError,
@@ -221,7 +251,14 @@ def entries(request, kind):
             )
     token = str(uuid.uuid4())
     request.session["stock_tokens"] = (tokens + [token])[-30:]
-    available = list(Item.objects.filter(company=company, active=True))
+    available = list(
+        Item.objects.filter(company=company).filter(
+            Q(active=True)
+            | Q(
+                pk__in=[line.item_id for line in editing.lines.all()] if editing else []
+            )
+        )
+    )
     names = {str(item.pk): item.name for item in available}
     initial_rows = (
         [
@@ -231,15 +268,27 @@ def entries(request, kind):
             )
         ]
         if request.method == "POST"
+        else [
+            {
+                "id": str(line.item_id),
+                "name": line.item.name,
+                "quantity": format(line.quantity, "f").rstrip("0").rstrip(".")
+                if "." in format(line.quantity, "f")
+                else str(line.quantity),
+            }
+            for line in editing.lines.all()
+        ]
+        if editing
         else []
     )
     return page(
         request,
         "entries",
         kind=kind,
+        editing=editing,
         title=dict(Entry.KINDS)[kind],
         token=token,
-        today=timezone.localdate(),
+        today=editing.date if editing else timezone.localdate(),
         initial_rows=initial_rows,
         items=available,
         entries=Paginator(

@@ -27,6 +27,7 @@ class UserForm(forms.Form):
             ("opening", "Opening stock"),
             ("purchase", "Purchases"),
             ("sale", "Sales"),
+            ("edit", "Edit entries"),
             ("delete", "Delete entries"),
             ("reports", "Reports"),
         ],

@@ -50,7 +50,7 @@ class Membership(models.Model):
     @property
     def allowed_features(self):
         if self.role == "admin":
-            return ["opening", "purchase", "sale", "delete", "reports"]
+            return ["opening", "purchase", "sale", "edit", "delete", "reports"]
         if self.features is not None:
             return self.features
         return self.default_features(self.role)
@@ -58,12 +58,12 @@ class Membership(models.Model):
     @staticmethod
     def default_features(role):
         return {
-            "manager": ["opening", "purchase", "sale", "delete", "reports"],
+            "manager": ["opening", "purchase", "sale", "edit", "delete", "reports"],
             "worker": ["purchase", "sale"],
             "support": ["reports"],
             "cook": ["sale"],
             "server": ["sale"],
-            "operator": ["opening", "purchase", "sale", "delete", "reports"],
+            "operator": ["opening", "purchase", "sale", "edit", "delete", "reports"],
             "viewer": ["reports"],
         }.get(role, [])
 
@@ -105,6 +105,7 @@ class Item(models.Model):
 
 
 class Entry(models.Model):
+    version = models.PositiveIntegerField(default=0)
     KINDS = [("opening", "Opening stock"), ("purchase", "Purchase"), ("sale", "Sale")]
     company = models.ForeignKey(Company, on_delete=models.PROTECT)
     kind = models.CharField(max_length=12, choices=KINDS)
@@ -139,6 +140,86 @@ class Line(models.Model):
                 fields=["entry", "item"], name="inventory_unique_entry_item"
             ),
         ]
+
+
+class EntryRevision(models.Model):
+    entry = models.ForeignKey(Entry, on_delete=models.PROTECT, related_name="revisions")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    token = models.UUIDField(unique=True)
+    previous = models.JSONField()
+
+
+@transaction.atomic
+def edit_stock_entry(company, actor, pk, token, expected_version, rows):
+    Company.objects.select_for_update().get(pk=company.pk)
+    entry = Entry.objects.get(pk=pk, company=company)
+    prior = EntryRevision.objects.filter(token=token).first()
+    if prior:
+        if prior.entry_id != entry.pk or prior.actor_id != actor.pk:
+            raise ValidationError("Invalid submission token.")
+        return entry
+    if entry.reversed_at:
+        raise ValidationError("Deleted entries cannot be edited.")
+    if entry.version != expected_version:
+        raise ValidationError("This entry was changed. Open it again before editing.")
+    if not rows or len(rows) > 100:
+        raise ValidationError("Add at least one item, up to 100 items.")
+    old_lines = list(entry.lines.select_related("item"))
+    affected = {line.item_id for line in old_lines}
+    prepared = []
+    seen = set()
+    for item_id, quantity in rows:
+        item = Item.objects.get(pk=item_id, company=company)
+        if not item.active and item.pk not in affected:
+            raise ValidationError("Choose an active item.")
+        if item.pk in seen:
+            raise ValidationError("Each item can appear only once.")
+        seen.add(item.pk)
+        if (
+            not quantity.is_finite()
+            or quantity <= 0
+            or quantity != quantity.to_integral_value()
+            or quantity > Decimal("9999999999.999")
+        ):
+            raise ValidationError("Use positive whole numbers of pieces.")
+        if (
+            entry.kind == "opening"
+            and Line.objects.filter(item=item, entry__reversed_at__isnull=True)
+            .exclude(entry=entry)
+            .exists()
+            and item.pk not in affected
+        ):
+            raise ValidationError(
+                f"{item.name}: opening stock already exists or this item has stock activity."
+            )
+        prepared.append((item, quantity))
+    EntryRevision.objects.create(
+        entry=entry,
+        actor=actor,
+        token=token,
+        previous={
+            "version": entry.version,
+            "date": str(entry.date),
+            "kind": entry.kind,
+            "lines": [
+                {
+                    "item_id": line.item_id,
+                    "item": line.item.name,
+                    "quantity": str(line.quantity),
+                }
+                for line in old_lines
+            ],
+        },
+    )
+    entry.lines.all().delete()
+    for item, quantity in prepared:
+        Line.objects.create(entry=entry, item=item, quantity=quantity)
+    for item in Item.objects.filter(pk__in=affected | seen):
+        validate_timeline(item)
+    entry.version += 1
+    entry.save(update_fields=["version"])
+    return entry
 
 
 def validate_timeline(item):

@@ -2,6 +2,6 @@
 
 <script>
 const roleField=document.getElementById('id_role');
-const presets={admin:['opening','purchase','sale','delete','reports'],manager:['opening','purchase','sale','delete','reports'],worker:['purchase','sale'],support:['reports'],cook:['sale'],server:['sale'],operator:['opening','purchase','sale','delete','reports'],viewer:['reports']};
+const presets={admin:['opening','purchase','sale','edit','delete','reports'],manager:['opening','purchase','sale','edit','delete','reports'],worker:['purchase','sale'],support:['reports'],cook:['sale'],server:['sale'],operator:['opening','purchase','sale','edit','delete','reports'],viewer:['reports']};
 if(roleField){roleField.addEventListener('change',()=>{for(const box of document.querySelectorAll('input[name="features"]')){box.checked=(presets[roleField.value]||[]).includes(box.value);}});}
 </script>{% endblock %}
