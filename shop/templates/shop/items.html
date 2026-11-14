@@ -1,4 +1,4 @@
-{% extends 'shop/base.html' %}{% block title %}Items · MeatFlow{% endblock %}
+{% extends 'shop/base.html' %}{% block title %}Items · Chatterjee Flow{% endblock %}
 {% block content %}<div class="page-heading"><div><h1>Items</h1><p class="muted">Manage your products and prices here.</p></div>{% if perms.shop.add_product %}<a class="button" href="{% url 'item_add' %}">+ Add item</a>{% endif %}</div>
 <nav class="periods" aria-label="Item status"><a href="{% url 'items' %}" {% if not removed %}aria-current="page"{% endif %}>Active items</a><a href="?show=removed" {% if removed %}aria-current="page"{% endif %}>Removed items</a></nav>
 <form class="item-search" method="get"><label class="sr-only" for="item-search">Find an item</label><input id="item-search" name="q" type="search" value="{{ query }}" placeholder="Search items…" autocomplete="off">{% if removed %}<input type="hidden" name="show" value="removed">{% endif %}<button>Search</button>{% if query %}<a href="{% url 'items' %}{% if removed %}?show=removed{% endif %}">Clear</a>{% endif %}</form>

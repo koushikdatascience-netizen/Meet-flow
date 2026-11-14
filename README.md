@@ -1,10 +1,10 @@
-# MeatFlow Stock
+# Chatterjee Flow Stock
 
 Stock-only inventory management for one company and its internal staff. There is no SaaS signup, company creation or company switching. Prices, buying costs, taxes and payment fields are absent from the active application. Printable stock documents show amounts and totals as `00`.
 
 ## Upgrade an existing installation
 
-Stop all running MeatFlow servers before upgrading. Back up before migrations:
+Stop all running Chatterjee Flow servers before upgrading. Back up before migrations:
 
 ```powershell
 cd D:\kkkk\meatflow-pos
@@ -50,7 +50,7 @@ The second command tests the preserved former billing code in an isolated URL co
 
 ## Temporary tunnel
 
-Run MeatFlow locally and, in another terminal, `cloudflared tunnel --url http://127.0.0.1:8010`. Restart Django in the same terminal where you set `DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,<exact tunnel hostname>` and `DJANGO_CSRF_TRUSTED_ORIGINS=https://<exact tunnel hostname>`. Quick Tunnel addresses change after restart. This is temporary testing, not a production deployment. Do not use wildcard allowed hosts.
+Run Chatterjee Flow locally and, in another terminal, `cloudflared tunnel --url http://127.0.0.1:8010`. Restart Django in the same terminal where you set `DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,<exact tunnel hostname>` and `DJANGO_CSRF_TRUSTED_ORIGINS=https://<exact tunnel hostname>`. Quick Tunnel addresses change after restart. This is temporary testing, not a production deployment. Do not use wildcard allowed hosts.
 
 ## Deployment and backups
 

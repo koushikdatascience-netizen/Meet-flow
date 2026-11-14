@@ -19,8 +19,8 @@ from .models import (
 )
 from .services import post_purchase, post_sale, post_adjustment, post_return, audit
 
-admin.site.site_header = "MeatFlow Shop Management"
-admin.site.site_title = "MeatFlow"
+admin.site.site_header = "Chatterjee Flow Shop Management"
+admin.site.site_title = "Chatterjee Flow"
 admin.site.index_title = "Products, Purchases, Sales and Reports"
 
 

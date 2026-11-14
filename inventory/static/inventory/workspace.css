@@ -39,3 +39,4 @@
 button,.button{font-size:15px;min-height:46px}.action-card{padding:22px}
 .form-panel label{font-size:15px}main>.back-link{font-size:14px;min-height:42px;display:inline-flex;align-items:center}
 @media(max-width:680px){.action-card{padding:20px}.action-card h3{font-size:22px}.filters button{font-size:14px}.entry-actions>*{flex:1 1 120px}.form-panel .entry-actions button{width:auto}}
+.brand{font-size:20px;letter-spacing:-.6px}.brand>span:last-child{min-width:0}.brand-mark{flex-shrink:0}.brand small{font-size:7px;letter-spacing:1.5px}

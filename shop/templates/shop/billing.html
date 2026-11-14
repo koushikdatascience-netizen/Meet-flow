@@ -1,5 +1,5 @@
 {% extends 'shop/base.html' %}{% load static %}
-{% block title %}{% if purchase_mode %}New purchase{% else %}Billing{% endif %} · MeatFlow{% endblock %}
+{% block title %}{% if purchase_mode %}New purchase{% else %}Billing{% endif %} · Chatterjee Flow{% endblock %}
 {% block content %}
 <div class="page-heading"><div><h1>{% if purchase_mode %}New purchase{% else %}New bill{% endif %}</h1><p class="muted">Type product → Enter → quantity → Enter. <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to save.</p></div>{% if last_sale %}<a class="quiet button" href="{% url 'invoice' last_sale.pk %}">Last bill · ₹{{ last_sale.total }}</a>{% endif %}</div>
 {% if not purchase_mode and products and not has_sale_stock %}<div class="stock-notice" role="status"><strong>No stock is available to sell yet.</strong> {% if perms.shop.post_purchase %}<a href="{% url 'purchase_entry' %}">Add a purchase</a> with the quantities received, then come back to billing.{% else %}Ask the owner or inventory staff to record the quantities received.{% endif %}</div>{% endif %}
