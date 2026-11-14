@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from functools import wraps
 
 from django.contrib import messages
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -12,6 +13,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse
+from django.utils.crypto import constant_time_compare
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -54,6 +56,10 @@ def staff_access(role=None):
 
 def page(request, template, **context):
     context.setdefault(
+        "allow_clear_stock",
+        bool(settings.RENDER_HOSTNAME) and request.user.is_superuser,
+    )
+    context.setdefault(
         "page_name",
         {
             "report": "Reports",
@@ -90,6 +96,40 @@ def home(request):
             ).select_related("created_by")[:6],
         )
     raise PermissionDenied("No features assigned. Contact your administrator.")
+
+
+@staff_access(["admin"])
+def clear_stock_view(request):
+    if not request.user.is_superuser or not settings.RENDER_HOSTNAME:
+        raise PermissionDenied
+    token = request.session.get("clear_stock_token")
+    if request.method == "POST":
+        if (
+            not token
+            or not constant_time_compare(request.POST.get("token", ""), token)
+            or request.POST.get("confirm") != "yes"
+        ):
+            messages.error(request, "Tick the confirmation before clearing stock.")
+        else:
+            from .cleanup import clear_stock
+
+            clear_stock(uuid.UUID(token))
+            request.session.pop("clear_stock_token", None)
+            messages.success(
+                request,
+                "Stock cleared. Backup saved. Users, roles and categories kept.",
+            )
+            return redirect("home")
+    if not token:
+        token = str(uuid.uuid4())
+        request.session["clear_stock_token"] = token
+    return page(
+        request,
+        "clear_stock",
+        token=token,
+        item_count=Item.objects.count(),
+        entry_count=Entry.objects.count(),
+    )
 
 
 @staff_access(["admin"])

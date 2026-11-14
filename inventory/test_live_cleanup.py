@@ -8,7 +8,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import TestCase, override_settings, Client
 from django.utils import timezone
 from decimal import Decimal
 from .models import (
@@ -105,10 +105,61 @@ class LiveStockCleanupTests(TestCase):
 
     def test_failed_backup_rolls_back_without_deleting(self):
         with patch(
-            "inventory.management.commands.clear_live_stock.StockClearBackup.objects.create",
+            "inventory.cleanup.StockClearBackup.objects.create",
             side_effect=RuntimeError("backup unavailable"),
         ):
             with self.assertRaises(RuntimeError):
                 self.clear(str(uuid.uuid4()))
         self.assertTrue(Item.objects.filter(pk=self.item.pk).exists())
         self.assertTrue(Product.objects.filter(pk=self.product.pk).exists())
+
+    @override_settings(RENDER_HOSTNAME="example.onrender.com")
+    def test_owner_can_confirm_cleanup_without_environment_variable(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/clear-stock/")
+        self.assertEqual(response.status_code, 200)
+        token = response.context["token"]
+        self.assertTrue(Item.objects.exists())
+        self.assertEqual(
+            self.client.post("/clear-stock/", {"token": token}).status_code, 200
+        )
+        self.assertTrue(Item.objects.exists())
+        self.assertEqual(
+            self.client.post(
+                "/clear-stock/", {"token": token, "confirm": "yes"}
+            ).status_code,
+            302,
+        )
+        self.assertFalse(Item.objects.exists())
+        self.assertTrue(Membership.objects.filter(pk=self.membership.pk).exists())
+        Item.objects.create(company=self.company, name="New stock", category="Fish")
+        self.client.post("/clear-stock/", {"token": token, "confirm": "yes"})
+        self.assertTrue(Item.objects.filter(name="New stock").exists())
+        self.assertEqual(StockClearBackup.objects.count(), 1)
+
+    def test_local_database_cannot_be_cleared_from_screen(self):
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get("/clear-stock/").status_code, 403)
+        self.assertEqual(
+            self.client.post("/clear-stock/", {"confirm": "yes"}).status_code, 403
+        )
+        self.assertTrue(Item.objects.exists())
+
+    @override_settings(RENDER_HOSTNAME="example.onrender.com")
+    def test_non_owner_and_missing_csrf_are_blocked(self):
+        staff = get_user_model().objects.create_user(
+            "staff-admin", password="Strong-test-password-982!"
+        )
+        Membership.objects.create(
+            user=staff, company=self.company, role="admin", must_change_password=False
+        )
+        self.client.force_login(staff)
+        self.assertEqual(
+            self.client.post("/clear-stock/", {"confirm": "yes"}).status_code, 403
+        )
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        self.assertEqual(
+            client.post("/clear-stock/", {"confirm": "yes"}).status_code, 403
+        )
+        self.assertTrue(Item.objects.exists())

@@ -25,6 +25,7 @@ urlpatterns = [
     ),
     path("items/<int:pk>/remove/", views.remove_item, name="stock_item_remove"),
     path("users/", views.users, name="stock_users"),
+    path("clear-stock/", views.clear_stock_view, name="clear_stock"),
     path("entries/<str:kind>/", views.entries, name="stock_entries"),
     path("entries/<int:pk>/delete/", views.delete_entry, name="stock_delete"),
     path("document/<int:pk>/", views.receipt, name="stock_receipt"),

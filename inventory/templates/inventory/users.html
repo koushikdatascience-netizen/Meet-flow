@@ -1,5 +1,6 @@
 {% extends 'inventory/base.html' %}{% block content %}<a class="back-link" href="{% url 'home' %}">← Back to workspace</a><h2>Users</h2><form method="post" class="panel form-panel">{% csrf_token %}{{ form.as_p }}<button>Save user</button></form><div class="scroll" role="region" aria-label="Users table" tabindex="0"><table><tr><th>Username</th><th>Role</th><th>Active</th><th></th></tr>{% for member in users %}<tr><td>{{ member.user.username }}</td><td>{{ member.get_role_display }}</td><td>{{ member.user.is_active }}</td><td><a href="?edit={{ member.pk }}">Edit</a></td></tr>{% endfor %}</table></div>
 
+{% if allow_clear_stock %}<p><a class="button secondary" href="{% url 'clear_stock' %}">Clear stock data</a></p>{% endif %}
 <script>
 const roleField=document.getElementById('id_role');
 const presets={admin:['opening','purchase','sale','edit','delete','reports'],manager:['opening','purchase','sale','edit','delete','reports'],worker:['purchase','sale'],support:['reports'],cook:['sale'],server:['sale'],operator:['opening','purchase','sale','edit','delete','reports'],viewer:['reports']};
