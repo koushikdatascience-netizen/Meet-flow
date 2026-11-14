@@ -18,6 +18,11 @@ urlpatterns = [
     path("password/", ChangePasswordView.as_view(), name="password_change"),
     path("items/", views.items, name="stock_items"),
     path("categories/", views.categories, name="stock_categories"),
+    path(
+        "categories/<int:pk>/delete/",
+        views.remove_category,
+        name="stock_category_remove",
+    ),
     path("items/<int:pk>/remove/", views.remove_item, name="stock_item_remove"),
     path("users/", views.users, name="stock_users"),
     path("entries/<str:kind>/", views.entries, name="stock_entries"),

@@ -2,13 +2,37 @@ from django import forms
 from django.contrib.auth import get_user_model, password_validation
 from django.core.exceptions import ValidationError
 
-from .models import Item, Membership
+from .models import Item, Membership, ItemCategory, Company
 
 
 class ItemForm(forms.ModelForm):
+    category = forms.ChoiceField(choices=())
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        company = company or (
+            self.instance.company
+            if self.instance.pk
+            else Company.objects.filter(is_primary=True).first()
+        )
+        choices = (
+            list(
+                ItemCategory.objects.filter(company=company, active=True).values_list(
+                    "name", "name"
+                )
+            )
+            if company
+            else []
+        )
+        self.fields["category"].choices = [("", "Choose category"), *choices]
+
     class Meta:
         model = Item
         fields = ["name", "category", "active"]
+
+
+class CategoryForm(forms.Form):
+    name = forms.CharField(label="Category name", max_length=80)
 
 
 class UserForm(forms.Form):

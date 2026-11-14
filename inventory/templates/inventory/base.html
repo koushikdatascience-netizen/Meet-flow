@@ -7,7 +7,7 @@
 <div class="company-label"><span class="status-dot"></span>{{ nav_member.company.name|default:'Internal stock workspace' }}</div>
 <p class="nav-label">WORKSPACE</p>
 <nav aria-label="Main navigation">
-<a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' or request.resolver_match.url_name == 'stock_entries' or request.resolver_match.url_name == 'stock_delete' or request.resolver_match.url_name == 'stock_receipt' or request.resolver_match.url_name == 'stock_categories' or request.resolver_match.url_name == 'stock_items' or request.resolver_match.url_name == 'stock_item_remove' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">⌂</span>Home</a>
+<a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' or request.resolver_match.url_name == 'stock_entries' or request.resolver_match.url_name == 'stock_delete' or request.resolver_match.url_name == 'stock_receipt' or request.resolver_match.url_name == 'stock_category_remove' or request.resolver_match.url_name == 'stock_categories' or request.resolver_match.url_name == 'stock_items' or request.resolver_match.url_name == 'stock_item_remove' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">⌂</span>Home</a>
 {% if 'reports' in nav_member.allowed_features %}<a href="{% url 'stock_report' %}" {% if request.resolver_match.url_name == 'stock_report' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">▤</span>Reports</a>{% endif %}
 {% if nav_member.role == 'admin' %}<a href="{% url 'stock_users' %}" {% if request.resolver_match.url_name == 'stock_users' %}class="active" aria-current="page"{% endif %}><span class="nav-icon">♙</span>Users</a>{% endif %}
 </nav>

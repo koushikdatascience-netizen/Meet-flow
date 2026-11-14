@@ -59,3 +59,7 @@ Existing Docker/PostgreSQL and backup commands are preserved. Use PostgreSQL for
 ## Single-company upgrade
 
 Migration 0006 selects the existing owner workspace, or the workspace with the most stock activity when the owner has none, and assigns existing staff to that one workspace. No item, entry, user or audit history is deleted. Any extra companies created during earlier testing remain archived in the database; their stock is not silently merged. All normal users work in the same selected workspace. Back up before migration.
+
+## Item categories
+
+Administrators can add, edit and delete categories from Home → Item Categories. Chicken, Mutton, Fish and Others are seeded on upgrade as the starting list, not a restriction. New categories appear in the item dropdown and report filter. Renaming updates every linked item in the same transaction. Category names are unique without regard to case. Deletion is blocked while any item, including a removed item, still uses the category; move those items to another category first. This keeps stock history intact.

@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 
@@ -68,6 +69,23 @@ class Membership(models.Model):
         }.get(role, [])
 
 
+class ItemCategory(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.PROTECT)
+    name = models.CharField(max_length=80)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["pk"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"), "company", name="inventory_unique_category_name"
+            )
+        ]
+
+    def __str__(self):
+        return self.name
+
+
 class Item(models.Model):
     class Category(models.TextChoices):
         CHICKEN = "Chicken", "Chicken"
@@ -77,9 +95,7 @@ class Item(models.Model):
 
     company = models.ForeignKey(Company, on_delete=models.PROTECT)
     name = models.CharField(max_length=160)
-    category = models.CharField(
-        max_length=80, choices=Category.choices, default=Category.OTHERS
-    )
+    category = models.CharField(max_length=80, default=Category.OTHERS)
     unit = models.CharField(max_length=2, choices=[("pc", "Pieces")], default="pc")
     active = models.BooleanField(default=True)
 
@@ -87,12 +103,6 @@ class Item(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(unit="pc"), name="inventory_item_pieces_only"
-            ),
-            models.CheckConstraint(
-                condition=models.Q(
-                    category__in=["Chicken", "Mutton", "Fish", "Others"]
-                ),
-                name="inventory_item_category_allowed",
             ),
             models.UniqueConstraint(
                 fields=["company", "name"], name="inventory_company_item_name"

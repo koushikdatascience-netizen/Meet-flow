@@ -15,11 +15,12 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from .forms import ItemForm, UserForm
+from .forms import ItemForm, UserForm, CategoryForm
 from .models import (
     Company,
     Entry,
     Item,
+    ItemCategory,
     Line,
     Membership,
     post_entry,
@@ -94,7 +95,9 @@ def home(request):
 @staff_access(["admin"])
 def items(request):
     category = request.GET.get("category", "")
-    if category not in Item.Category.values:
+    if not ItemCategory.objects.filter(
+        company=request.member.company, name=category, active=True
+    ).exists():
         category = ""
     item = (
         get_object_or_404(Item, pk=request.GET["edit"], company=request.member.company)
@@ -105,6 +108,7 @@ def items(request):
         request.POST or None,
         instance=item,
         initial={"category": category} if category and not item else None,
+        company=request.member.company,
     )
     if request.method == "POST" and form.is_valid():
         try:
@@ -112,6 +116,10 @@ def items(request):
                 Company.objects.select_for_update().get(pk=request.member.company_id)
                 obj = form.save(commit=False)
                 obj.company = request.member.company
+                if not ItemCategory.objects.filter(
+                    company=obj.company, name=obj.category, active=True
+                ).exists():
+                    raise ValidationError("Choose an available category.")
                 if (
                     item
                     and Line.objects.filter(item=item).exists()
@@ -139,6 +147,51 @@ def items(request):
 
 @staff_access(["admin"])
 def categories(request):
+    editing = (
+        get_object_or_404(
+            ItemCategory,
+            pk=request.GET["edit"],
+            company=request.member.company,
+            active=True,
+        )
+        if request.GET.get("edit")
+        else None
+    )
+    form = CategoryForm(
+        request.POST or None, initial={"name": editing.name} if editing else None
+    )
+    if request.method == "POST" and form.is_valid():
+        try:
+            with transaction.atomic():
+                Company.objects.select_for_update().get(pk=request.member.company_id)
+                name = form.cleaned_data["name"]
+                duplicate = ItemCategory.objects.filter(
+                    company=request.member.company, name__iexact=name
+                )
+                if editing:
+                    duplicate = duplicate.exclude(pk=editing.pk)
+                if duplicate.exists():
+                    raise ValidationError("That category already exists.")
+                if editing:
+                    current = ItemCategory.objects.get(pk=editing.pk, active=True)
+                    Item.objects.filter(
+                        company=request.member.company, category=current.name
+                    ).update(category=name)
+                    current.name = name
+                    current.save(update_fields=["name"])
+                else:
+                    ItemCategory.objects.create(
+                        company=request.member.company, name=name
+                    )
+            messages.success(request, "Saved.")
+            return redirect("stock_categories")
+        except (IntegrityError, ValidationError) as exc:
+            form.add_error(
+                "name",
+                "That category already exists."
+                if isinstance(exc, IntegrityError)
+                else exc,
+            )
     counts = dict(
         Item.objects.filter(company=request.member.company, active=True)
         .values("category")
@@ -149,10 +202,43 @@ def categories(request):
         request,
         "categories",
         categories=[
-            {"name": name, "count": counts.get(name, 0)}
-            for name in Item.Category.values
+            {
+                "pk": category.pk,
+                "name": category.name,
+                "count": counts.get(category.name, 0),
+            }
+            for category in ItemCategory.objects.filter(
+                company=request.member.company, active=True
+            )
         ],
+        form=form,
+        editing=editing,
     )
+
+
+@staff_access(["admin"])
+def remove_category(request, pk):
+    category = get_object_or_404(
+        ItemCategory, pk=pk, company=request.member.company, active=True
+    )
+    count = Item.objects.filter(
+        company=request.member.company, category=category.name
+    ).count()
+    if request.method == "POST":
+        with transaction.atomic():
+            Company.objects.select_for_update().get(pk=request.member.company_id)
+            category = get_object_or_404(
+                ItemCategory, pk=pk, company=request.member.company, active=True
+            )
+            if Item.objects.filter(
+                company=request.member.company, category=category.name
+            ).exists():
+                messages.error(request, "Move the items to another category first.")
+            else:
+                category.delete()
+                messages.success(request, "Deleted.")
+                return redirect("stock_categories")
+    return page(request, "remove_category", category=category, item_count=count)
 
 
 @staff_access(["admin"])
@@ -408,10 +494,14 @@ def report(request):
     start = end = today
     category = request.GET.get("category", "")
     items = Item.objects.filter(company=request.member.company)
-    categories = list(Item.Category.values)
+    categories = list(
+        ItemCategory.objects.filter(
+            company=request.member.company, active=True
+        ).values_list("name", flat=True)
+    )
     if category and category not in categories:
         category = ""
-        messages.error(request, "Choose Chicken, Mutton, Fish or Others.")
+        messages.error(request, "Choose an available category.")
     if category:
         items = items.filter(category=category)
     item_list = list(items)
