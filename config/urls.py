@@ -17,6 +17,7 @@ urlpatterns = [
     path("logout/", auth.LogoutView.as_view(), name="logout"),
     path("password/", ChangePasswordView.as_view(), name="password_change"),
     path("items/", views.items, name="stock_items"),
+    path("categories/", views.categories, name="stock_categories"),
     path("items/<int:pk>/remove/", views.remove_item, name="stock_item_remove"),
     path("users/", views.users, name="stock_users"),
     path("entries/<str:kind>/", views.entries, name="stock_entries"),

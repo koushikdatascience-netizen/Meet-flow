@@ -10,6 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
+from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -48,6 +49,7 @@ def page(request, template, **context):
             "report": "Reports",
             "users": "Users",
             "items": "Items",
+            "categories": "Item Categories",
             "entries": context.get("title", "Stock entries"),
             "home": "Home",
             "delete": "Delete entry",
@@ -82,12 +84,19 @@ def home(request):
 
 @staff_access(["admin"])
 def items(request):
+    category = request.GET.get("category", "")
+    if category not in Item.Category.values:
+        category = ""
     item = (
         get_object_or_404(Item, pk=request.GET["edit"], company=request.member.company)
         if request.GET.get("edit")
         else None
     )
-    form = ItemForm(request.POST or None, instance=item)
+    form = ItemForm(
+        request.POST or None,
+        instance=item,
+        initial={"category": category} if category and not item else None,
+    )
     if request.method == "POST" and form.is_valid():
         try:
             with transaction.atomic():
@@ -111,7 +120,29 @@ def items(request):
         request,
         "items",
         form=form,
-        items=Item.objects.filter(company=request.member.company),
+        items=Item.objects.filter(
+            company=request.member.company,
+            **({"category": category} if category else {}),
+        ),
+        selected_category=category,
+    )
+
+
+@staff_access(["admin"])
+def categories(request):
+    counts = dict(
+        Item.objects.filter(company=request.member.company, active=True)
+        .values("category")
+        .annotate(count=Count("pk"))
+        .values_list("category", "count")
+    )
+    return page(
+        request,
+        "categories",
+        categories=[
+            {"name": name, "count": counts.get(name, 0)}
+            for name in Item.Category.values
+        ],
     )
 
 

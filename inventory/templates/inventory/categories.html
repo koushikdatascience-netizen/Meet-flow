@@ -1,0 +1,5 @@
+{% extends 'inventory/base.html' %}{% block content %}
+<a class="back-link" href="{% url 'home' %}">← Back to workspace</a>
+<div class="page-heading"><div><p class="eyebrow">ITEM SETUP</p><h1>Item Categories</h1><p>Choose a category to view or add its items. These four categories are fixed.</p></div></div>
+<div class="action-grid">{% for category in categories %}<a class="action-card" href="{% url 'stock_items' %}?category={{ category.name|urlencode }}"><span class="action-icon purple">▦</span><h3>{{ category.name }}</h3><p>{{ category.count }} active item{{ category.count|pluralize }}</p><span class="card-action">View or add items <b>→</b></span></a>{% endfor %}</div>
+{% endblock %}

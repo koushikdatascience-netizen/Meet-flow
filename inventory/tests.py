@@ -56,6 +56,26 @@ class StockTests(TestCase):
         self.assertIn("Chicken", csv)
         self.assertNotIn("Amount", csv)
 
+    def test_home_category_card_lists_fixed_categories_and_filters_items(self):
+        Item.objects.create(company=self.company, name="Fish item", category="Fish")
+        self.assertContains(self.client.get("/"), "Browse categories")
+        response = self.client.get("/categories/")
+        self.assertEqual(
+            [row["name"] for row in response.context["categories"]],
+            ["Chicken", "Mutton", "Fish", "Others"],
+        )
+        self.assertEqual(response.context["categories"][2]["count"], 1)
+        filtered = self.client.get("/items/?category=Fish")
+        self.assertEqual(
+            list(filtered.context["items"].values_list("name", flat=True)),
+            ["Fish item"],
+        )
+        self.assertEqual(filtered.context["form"].initial["category"], "Fish")
+        self.member.role = "worker"
+        self.member.save()
+        self.assertEqual(self.client.get("/categories/").status_code, 403)
+        self.assertNotContains(self.client.get("/"), "Browse categories")
+
     def test_report_totals_and_remaining_stock_match_saved_movements(self):
         self.post("opening", "20", self.today - timedelta(days=1))
         self.post("sale", "4", self.today - timedelta(days=1))
