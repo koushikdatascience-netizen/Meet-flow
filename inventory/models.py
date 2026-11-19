@@ -150,8 +150,10 @@ class Item(models.Model):
 class Entry(models.Model):
     version = models.PositiveIntegerField(default=0)
     KINDS = [("opening", "Opening stock"), ("purchase", "Purchase"), ("sale", "Sale")]
+    SALE_TYPES = [("counter", "Counter"), ("zomato", "Zomato"), ("waste", "Waste")]
     company = models.ForeignKey(Company, on_delete=models.PROTECT)
     kind = models.CharField(max_length=12, choices=KINDS)
+    sale_type = models.CharField(max_length=12, choices=SALE_TYPES, default="counter")
     date = models.DateField(default=timezone.localdate)
     note = models.CharField(max_length=240, blank=True)
     created_by = models.ForeignKey(
@@ -194,7 +196,7 @@ class EntryRevision(models.Model):
 
 
 @transaction.atomic
-def edit_stock_entry(company, actor, pk, token, expected_version, rows):
+def edit_stock_entry(company, actor, pk, token, expected_version, rows, sale_type="counter"):
     Company.objects.select_for_update().get(pk=company.pk)
     entry = Entry.objects.get(pk=pk, company=company)
     prior = EntryRevision.objects.filter(token=token).first()
@@ -208,6 +210,8 @@ def edit_stock_entry(company, actor, pk, token, expected_version, rows):
         raise ValidationError("This entry was changed. Open it again before editing.")
     if not rows or len(rows) > 100:
         raise ValidationError("Add at least one item, up to 100 items.")
+    if entry.kind == "sale" and sale_type not in dict(Entry.SALE_TYPES):
+        raise ValidationError("Choose a valid sale type.")
     old_lines = list(entry.lines.select_related("item"))
     affected = {line.item_id for line in old_lines}
     prepared = []
@@ -245,6 +249,7 @@ def edit_stock_entry(company, actor, pk, token, expected_version, rows):
             "version": entry.version,
             "date": str(entry.date),
             "kind": entry.kind,
+            "sale_type": entry.sale_type,
             "lines": [
                 {
                     "item_id": line.item_id,
@@ -261,7 +266,9 @@ def edit_stock_entry(company, actor, pk, token, expected_version, rows):
     for item in Item.objects.filter(pk__in=affected | seen):
         validate_timeline(item)
     entry.version += 1
-    entry.save(update_fields=["version"])
+    if entry.kind == "sale":
+        entry.sale_type = sale_type
+    entry.save(update_fields=["version", "sale_type"] if entry.kind == "sale" else ["version"])
     return entry
 
 
@@ -280,10 +287,12 @@ def validate_timeline(item):
 
 
 @transaction.atomic
-def post_entry(company, actor, kind, date, note, token, rows):
+def post_entry(company, actor, kind, date, note, token, rows, sale_type="counter"):
     Company.objects.select_for_update().get(pk=company.pk)
     if kind not in dict(Entry.KINDS):
         raise ValidationError("Invalid entry type.")
+    if kind == "sale" and sale_type not in dict(Entry.SALE_TYPES):
+        raise ValidationError("Choose a valid sale type.")
     existing = Entry.objects.filter(token=token).first()
     if existing:
         if existing.company_id != company.pk or existing.created_by_id != actor.pk:
@@ -294,7 +303,8 @@ def post_entry(company, actor, kind, date, note, token, rows):
     if date > timezone.localdate():
         raise ValidationError("Future stock entries are not allowed.")
     entry = Entry.objects.create(
-        company=company, created_by=actor, kind=kind, date=date, note=note, token=token
+        company=company, created_by=actor, kind=kind, date=date, note=note, token=token,
+        sale_type=sale_type if kind == "sale" else "counter",
     )
     seen = set()
     for item_id, quantity in rows:

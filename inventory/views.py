@@ -384,6 +384,7 @@ def entries(request, kind):
                     uuid.UUID(token),
                     int(request.POST.get("version", "-1")),
                     rows,
+                    request.POST.get("sale_type", editing.sale_type),
                 )
             else:
                 post_entry(
@@ -394,6 +395,7 @@ def entries(request, kind):
                     "",
                     uuid.UUID(token),
                     rows,
+                    request.POST.get("sale_type", "counter"),
                 )
             messages.success(request, "Saved.")
             return redirect("stock_entries", kind=kind)
@@ -454,6 +456,11 @@ def entries(request, kind):
         token=token,
         today=editing.date if editing else timezone.localdate(),
         initial_rows=initial_rows,
+        sale_types=Entry.SALE_TYPES,
+        selected_sale_type=(
+            request.POST.get("sale_type", editing.sale_type if editing else "counter")
+            if kind == "sale" else ""
+        ),
         items=available,
         entries=Paginator(
             Entry.objects.filter(
@@ -602,7 +609,7 @@ def report(request):
     if not request.member.can_reports or (is_download and "reports_download" not in request.member.allowed_features):
         raise PermissionDenied
     if not is_download and "reports_view" not in request.member.allowed_features:
-        return page(request, "report_download", today=timezone.localdate())
+        return page(request, "report_download", today=timezone.localdate(), sale_types=Entry.SALE_TYPES)
     today = timezone.localdate()
     start = end = today
     try:
@@ -620,6 +627,10 @@ def report(request):
             request, "Choose valid From and To dates. To must be on or after From."
         )
     category = request.GET.get("category", "")
+    sale_type = request.GET.get("sale_type", "")
+    if sale_type and sale_type not in dict(Entry.SALE_TYPES):
+        sale_type = ""
+        messages.error(request, "Choose an available sale type.")
     items = Item.objects.filter(company=request.member.company)
     categories = list(
         ItemCategory.objects.filter(
@@ -648,6 +659,8 @@ def report(request):
     balances = {item.pk: Decimal("0") for item in item_list}
     daily = {}
     for line in movements:
+        if line.entry.kind == "sale" and sale_type and line.entry.sale_type != sale_type:
+            continue
         delta = -line.quantity if line.entry.kind == "sale" else line.quantity
         if line.entry.date < start:
             balances[line.item_id] += delta
@@ -689,7 +702,7 @@ def report(request):
         "Opening stock",
         "Purchase",
         "Total",
-        "Sale",
+        f"Sale ({dict(Entry.SALE_TYPES)[sale_type]})" if sale_type else "Sale",
         "Closing stock",
     ]
     purchases = sum((row[3] for row in rows), Decimal(0))
@@ -730,5 +743,7 @@ def report(request):
         category=category,
         filter_items=filter_items,
         selected_item=selected_item,
+        sale_types=Entry.SALE_TYPES,
+        sale_type=sale_type,
         totals=totals,
     )
