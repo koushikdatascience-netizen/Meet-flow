@@ -56,6 +56,26 @@ class StockTests(TestCase):
         self.assertIn("Chicken", csv)
         self.assertNotIn("Amount", csv)
 
+    def test_sale_type_report_filter_keeps_actual_stock_balances(self):
+        yesterday = self.today - timedelta(days=1)
+        self.post("opening", "20", yesterday)
+        self.post("sale", "2", yesterday)
+        post_entry(
+            self.company, self.user, "sale", yesterday, "", uuid.uuid4(),
+            [(self.item.pk, Decimal("3"))], "zomato",
+        )
+        post_entry(
+            self.company, self.user, "sale", self.today, "", uuid.uuid4(),
+            [(self.item.pk, Decimal("1"))], "waste",
+        )
+        response = self.client.get("/reports/?sale_type=waste")
+        row = response.context["rows"][0]
+        self.assertEqual(row[2:], [15, 0, 15, 1, 14])
+        self.assertEqual(response.context["headers"][5], "Sale (Waste)")
+        csv = self.client.get("/reports/?sale_type=waste&format=csv").content.decode("utf-8-sig")
+        self.assertIn("Sale (Waste)", csv)
+        self.assertIn("15.000,0,15.000,1.000,14.000", csv)
+
     def test_report_date_category_item_filters_and_csv(self):
         yesterday = self.today - timedelta(days=1)
         self.post("opening", "10", yesterday)

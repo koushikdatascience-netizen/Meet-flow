@@ -658,15 +658,17 @@ def report(request):
     )
     balances = {item.pk: Decimal("0") for item in item_list}
     daily = {}
+    sales_by_type = {}
     for line in movements:
-        if line.entry.kind == "sale" and sale_type and line.entry.sale_type != sale_type:
-            continue
         delta = -line.quantity if line.entry.kind == "sale" else line.quantity
         if line.entry.date < start:
             balances[line.item_id] += delta
         else:
             key = (line.entry.date, line.item_id, line.entry.kind)
             daily[key] = daily.get(key, Decimal("0")) + line.quantity
+            if line.entry.kind == "sale":
+                sale_key = (line.entry.date, line.item_id, line.entry.sale_type)
+                sales_by_type[sale_key] = sales_by_type.get(sale_key, Decimal("0")) + line.quantity
     rows = []
     period_opening = sum(balances.values(), Decimal(0)) + sum(
         (quantity for (_, _, kind), quantity in daily.items() if kind == "opening"),
@@ -677,7 +679,11 @@ def report(request):
         for item in item_list:
             added = daily.get((day, item.pk, "opening"), Decimal("0"))
             purchased = daily.get((day, item.pk, "purchase"), Decimal("0"))
-            sold = daily.get((day, item.pk, "sale"), Decimal("0"))
+            sold = (
+                sales_by_type.get((day, item.pk, sale_type), Decimal("0"))
+                if sale_type
+                else daily.get((day, item.pk, "sale"), Decimal("0"))
+            )
             opening = balances[item.pk] + added
             total = opening + purchased
             closing = total - sold
@@ -745,5 +751,6 @@ def report(request):
         selected_item=selected_item,
         sale_types=Entry.SALE_TYPES,
         sale_type=sale_type,
+        sale_type_filter_active=bool(sale_type),
         totals=totals,
     )
